@@ -141,10 +141,10 @@
 ## Project Status Board
 - [x] 1 仓库创建与 Pages 启用
 - [x] 2 提交基础骨架（`index.html` / `app.js` / `data/entries.json` 示例）
-- [ ] 3 (UI Fix) 修正热力图布局与对齐
-- [ ] 4 (UI Fix) 修正 Legend 与标签对齐
+- [x] 3 (UI Fix) 修正热力图布局与对齐（已实现，待你视觉确认）
+- [x] 4 (UI Fix) 修正 Legend 与标签对齐（已实现，待你视觉确认）
 - [ ] 5 实现交互详情（tooltip/弹层）
-- [ ] 6 “打卡入口”改为站内表单卡片（modal）→ 构造 Google Form 预填链接
+- [ ] 6 “打卡入口”改为站内表单卡片（modal）→ 构造 Google Form 预填链接（modal 已完成，待提供 Google Form 预填映射以打通提交流程）
 - [ ] 7 Pages 部署验证
 
 ## UI/UX Fixes and Refinements (v1.1)
@@ -190,7 +190,9 @@
 - 规划阶段完成：确认 v1 使用静态 JSON；设计数据 schema、色阶、布局与任务拆分。
 - **Executor 已完成基础骨架提交。**
 - **Planner 根据用户反馈，新增了 UI/UX 修正任务。**
-- **Executor 已在本地新增 GitHub Actions 工作流与 CSV→JSON 转换脚本，待确认后提交推送。**
+- **Executor 已提交并推送 GitHub Actions 工作流与 CSV→JSON 转换脚本（可在 Actions 手动运行）。**
+- **UI 修正（热力图方向、Legend/日/月标签）已实现，等待你在页面上确认效果。**
+- **“去打卡”站内表单（modal）已实现，校验与预填链接拼接逻辑已就绪；待提供 Google Form 预填 `entry.<ID>` 映射后可完成跳转提交。**
 
 ## Executor's Feedback or Assistance Requests
 - 如需私密访问，请确认是否采用 Cloudflare Access（需要域名与 DNS 变更）。
@@ -278,7 +280,7 @@ YES. what should i do?
 - [x] 开启 Sheet 公共只读，拿到 CSV 导出链接并保存为仓库 Secret：`GF_CSV_URL`
 - [x] 新增 `.github/workflows/sync-form.yml`（手动 + 定时触发）
 - [x] 新增 `.github/scripts/csv_to_entries.(js|py)` 转换脚本
-- [ ] 在页面加“去打卡”站内表单（modal），并在提交时跳转到 Google Form 预填链接
+- [ ] 在页面加“去打卡”站内表单（modal），并在提交时跳转到 Google Form 预填链接（等待 `entry.<ID>` 映射）
 - [ ] 首次工作流运行成功，仓库内 `data/entries.json` 更新
 
 ## Executor's Feedback or Assistance Requests（更新）
