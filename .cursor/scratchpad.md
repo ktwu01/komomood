@@ -699,3 +699,50 @@ try {
 
 ## ✨ **项目成功标准**
 实现完全自动化的端到端流程：**表单提交 -> GAS处理 -> GitHub Actions自动触发 -> 网站数据实时更新**。
+
+---
+
+# 🚀 **最终诊断与修复：CORS预检请求问题** (2025-08-14)
+
+## 🎯 **当前状态总结**
+
+*   ✅ **诊断进展**：增强的前端错误处理机制已生效，明确报错 **"GAS 提交失败: Failed to fetch"**。
+*   ✅ **问题定位**：错误发生在浏览器端，是网络请求层面，而非GAS内部逻辑错误。
+*   💡 **根本原因分析：CORS Preflight `OPTIONS` 请求失败**
+    *   现代浏览器在发送跨域的 `POST` 请求之前，会先发送一个 **`OPTIONS` (预检) 请求**，以确认服务器是否允许该操作。
+    *   我们当前的 `gas-script.js` **只实现了 `doPost`**，但**没有实现 `doOptions`** 来响应这个预检请求。
+    *   由于GAS未能正确响应 `OPTIONS` 请求，浏览器出于安全策略，**直接阻止了后续的 `POST` 请求**，导致了 `Failed to fetch` 错误。
+
+## 🔧 **最终修复方案：在GAS中实现 `doOptions`**
+
+这是解决此类CORS预检问题的标准且唯一可靠的方法。
+
+### **第一步 (Executor): 更新 `gas-script.js`**
+*   **目标**：在 `gas-script.js` 中添加一个 `doOptions(e)` 函数。
+*   **功能**：这个函数将专门用于响应浏览器的 `OPTIONS` 预检请求，返回带有正确CORS头的成功响应，从而允许浏览器继续发送 `POST` 请求。
+
+**`doOptions` 函数实现代码:**
+```javascript
+function doOptions(e) {
+  return ContentService.createTextOutput()
+    .setHeader('Access-Control-Allow-Origin', '*') // 允许所有来源
+    .setHeader('Access--Control-Allow-Methods', 'POST, OPTIONS') // 允许的方法
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type'); // 允许的头
+}
+```
+
+### **第二步 (Executor): 部署与最终验证**
+1.  **执行代码修改**：由 **Executor** 将 `doOptions` 函数添加到 `gas-script.js`。
+2.  **更新GAS部署**：
+    *   将包含 `doOptions` 的最新脚本部署到 Google Apps Script。
+    *   **关键**：必须再次使用“**管理部署**” -> **编辑(✏️)** -> **新版本** 的方式更新，以**保持现有的URL不变**。
+3.  **最终测试**：
+    *   等待GAS部署完成。
+    *   清空浏览器缓存，访问网站并提交表单。
+    *   **预期结果**：
+        *   ✅ 表单提交成功，**无任何错误提示**，直接显示绿色成功消息。
+        *   ✅ **1分钟内**，GitHub Actions **自动触发**新一轮的工作流。
+        *   ✅ **2-3分钟内**，新数据成功显示在网站的热力图上。
+
+## ✨ **项目即将完成**
+这个 `doOptions` 的修复是完成项目的最后一步技术性修改。完成后，整个自动化流程将完全打通。
