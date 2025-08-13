@@ -334,17 +334,30 @@ YES. what should i do?
   - 步骤“Convert CSV to entries.json”应输出“Wrote N entries…”，并在后续步骤中触发自动提交 `data/entries.json`。
 
 ## Executor's Feedback or Assistance Requests（更新）
-- **User has provided Google Sheet URL.** Next step is to set the public CSV link as a repository secret named `GF_CSV_URL`.
-- 请确认是否添加“暗号”问题到表单（如果需要，我将按 `GF_PASSPHRASE` 过滤）。
-  暗号：0317。
 
-- 如果表单字段名或列头与建议不同，请提供最终列名，便于脚本映射。
+### ✅ Completed: GAS Frontend Integration 
+- **前端集成已完成**：
+  - ✅ 新增 passphrase 输入框（MMDD 格式，正则校验 `^\d{4}$`）
+  - ✅ 实现直接提交到 GAS（使用 `application/x-www-form-urlencoded` 避免预检）
+  - ✅ 添加成功/失败 UI 反馈（提交后显示结果，不跳转）
+  - ✅ 保留 Google Form 作为备用方案（如果 GAS 失败会自动降级）
 
+### 🟡 **待用户修复：GAS 脚本缺少函数**
+- **发现问题**：通过 curl 测试 GAS 端点时返回错误：`{"ok":false,"error":"ReferenceError: clamp_ is not defined"}`
+- **原因**：您的 GAS 脚本可能缺少 `clamp_` 函数定义
+- **解决方案**：请在您的 GAS 脚本中确保包含完整的代码，特别是这个函数：
+```javascript
+function clamp_(n) {
+  n = Number(n);
+  if (!isFinite(n)) return null;
+  return Math.max(1, Math.min(5, Math.trunc(n)));
+}
+```
 
-- 确认日历展示范围：默认近 365 天；是否需要固定某年或更长跨度？
-  OK：默认近 365 天。
-
-- 待办/阻塞：请提供 Google Form 的预填映射（`prefillBaseUrl` 以及各字段对应的 `entry.<ID>`：`date/kokoMood/momoMood/komoScore/note`），我将把这些值写入 `app.js` 的 `googleFormConfig`，完成从站内表单到 Google Form 的跳转提交流程。
+### 📝 待处理任务
+- 修复 GAS 脚本后，前端将能够成功提交数据到 Google Sheet
+- 运行 GitHub Actions 同步工作流以验证数据流程
+- 测试完整的端到端流程：前端 → GAS → Sheet → Actions → entries.json → 可视化更新
 
 ## Architecture Decision（更新）
 - 数据输入采用“站内表单体验 + Google Form 预填确认”的混合方案：前端仅做 UI 与参数构造，不直接写入仓库；后端仍通过 Google Sheet → GitHub Actions 聚合生成静态 JSON，保持静态站点的稳定性与可维护性。

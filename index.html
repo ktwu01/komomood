@@ -205,7 +205,13 @@
                         <label for="ci_note" class="block text-sm text-gray-600 mb-1">备注</label>
                         <textarea id="ci_note" name="note" rows="3" maxlength="140" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300" placeholder="最多 140 字"></textarea>
                     </div>
+                    <div>
+                        <label for="ci_passphrase" class="block text-sm text-gray-600 mb-1">通行码 (MMDD)</label>
+                        <input id="ci_passphrase" name="passphrase" type="text" pattern="^\d{4}$" maxlength="4" class="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-pink-300" placeholder="MMDD" required />
+                        <div class="text-xs text-gray-500 mt-1">请输入四位数字（月月日日）</div>
+                    </div>
                     <div id="checkinError" class="hidden text-sm text-red-500"></div>
+                    <div id="checkinSuccess" class="hidden text-sm text-green-600 bg-green-50 p-3 rounded-lg border border-green-200"></div>
                     <div class="flex justify-end space-x-3 pt-2">
                         <button type="button" class="px-4 py-2 rounded-lg border text-gray-700 hover:bg-gray-50" data-modal-close>取消</button>
                         <button type="submit" class="px-4 py-2 rounded-lg bg-pink-500 text-white hover:bg-pink-600">提交</button>
