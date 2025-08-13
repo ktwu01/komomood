@@ -21,7 +21,7 @@ class KomomoodApp {
 
 		// GAS Web App configuration for direct submission
 		this.gasConfig = {
-			webAppUrl: 'https://script.google.com/macros/s/AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc-MAW3HLeesbobuXzbz3_XIqGRbdDw/exec'
+			webAppUrl: 'https://script.google.com/macros/s/AKfycby1vLHrmJkWqW8CIrKUBfJH19ObN0p88bklpiZgn6GrabIZRNyQXX3Gab1coGUs_G4I0g/exec'
 		};
 
 		// Google Form prefill config (fallback option)
