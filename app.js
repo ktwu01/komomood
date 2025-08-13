@@ -414,22 +414,24 @@ class KomomoodApp {
             });
 
             if (gasResult.success) {
-                this.showCheckinSuccess('✅ 提交成功！数据将在下次同步后显示在热力图中');
+                this.showCheckinSuccess('✅ 提交成功！数据将在1-2分钟内自动同步到热力图。');
                 setTimeout(() => {
                     this.closeCheckinModal();
-                    // Optionally reload data
-                    this.loadData();
-                }, 2000);
+                }, 2500);
                 return;
             } else {
-                // GAS failed, fallback to Google Form
-                console.warn('GAS submission failed:', gasResult.error);
-                this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase });
+                // GAS failed, show specific error and then fallback
+                const errorMessage = `GAS 提交失败: ${gasResult.error || '未知错误'}`;
+                console.warn(errorMessage);
+                this.showCheckinError(errorMessage + ' 将尝试备用方案...');
+                setTimeout(() => this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }), 2000);
             }
         } catch (error) {
             console.error('Error during submission:', error);
-            // Fallback to Google Form
-            this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase });
+            // Fallback to Google Form with specific error message
+            const errorMessage = `网络请求失败: ${error.message || '请检查网络连接'}`;
+            this.showCheckinError(errorMessage + ' 将尝试备用方案...');
+            setTimeout(() => this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }), 2000);
         } finally {
             // Restore submit button
             if (submitBtn) {
@@ -443,35 +445,42 @@ class KomomoodApp {
         const { webAppUrl } = this.gasConfig;
         
         if (!webAppUrl) {
-            throw new Error('GAS Web App URL not configured');
+            return { success: false, error: 'GAS Web App URL not configured' };
         }
 
-        const params = new URLSearchParams({
-            date,
-            kokoMood: String(kokoMood),
-            momoMood: String(momoMood), 
-            komoScore: String(komoScore),
-            note,
-            passphrase
-        });
+        try {
+            const params = new URLSearchParams({
+                date,
+                kokoMood: String(kokoMood),
+                momoMood: String(momoMood), 
+                komoScore: String(komoScore),
+                note,
+                passphrase
+            });
 
-        const response = await fetch(webAppUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            body: params.toString()
-        });
+            const response = await fetch(webAppUrl, {
+                method: 'POST',
+                mode: 'cors', // 明确指定CORS模式
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: params.toString()
+            });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+            }
+
+            const result = await response.json();
+            return {
+                success: result.ok === true,
+                error: result.error || null
+            };
+        } catch (error) {
+            console.error('submitToGAS error:', error);
+            return { success: false, error: error.message };
         }
-
-        const result = await response.json();
-        return {
-            success: result.ok === true,
-            error: result.error || null
-        };
     }
 
     fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }) {
@@ -505,7 +514,7 @@ class KomomoodApp {
             ? `${prefillBaseUrl}&${params.toString()}`
             : `${prefillBaseUrl}?${params.toString()}`;
 
-        this.showCheckinSuccess('⚠️ 正在使用备用方案，即将跳转到 Google Form...');
+        this.showCheckinWarning('⚠️ 正在使用备用方案，即将跳转到 Google Form...');
         
         setTimeout(() => {
             window.open(finalUrl, '_blank');
@@ -518,6 +527,8 @@ class KomomoodApp {
         if (errorDiv) {
             errorDiv.textContent = message;
             errorDiv.classList.remove('hidden');
+            errorDiv.classList.remove('bg-green-100', 'text-green-800');
+            errorDiv.classList.add('bg-red-100', 'text-red-800');
         }
     }
 
@@ -525,6 +536,7 @@ class KomomoodApp {
         const errorDiv = this.checkinError;
         if (errorDiv) {
             errorDiv.classList.add('hidden');
+            errorDiv.classList.remove('bg-green-100', 'text-green-800', 'bg-red-100', 'text-red-800');
         }
     }
 
@@ -533,6 +545,8 @@ class KomomoodApp {
         if (successDiv) {
             successDiv.textContent = message;
             successDiv.classList.remove('hidden');
+            successDiv.classList.add('bg-green-100', 'text-green-800');
+            successDiv.classList.remove('bg-yellow-100', 'text-yellow-800');
         }
     }
 
@@ -540,6 +554,17 @@ class KomomoodApp {
         const successDiv = document.getElementById('checkinSuccess');
         if (successDiv) {
             successDiv.classList.add('hidden');
+            successDiv.classList.remove('bg-green-100', 'text-green-800', 'bg-yellow-100', 'text-yellow-800');
+        }
+    }
+
+    showCheckinWarning(message) {
+        const successDiv = document.getElementById('checkinSuccess');
+        if (successDiv) {
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+            successDiv.classList.remove('bg-green-100', 'text-green-800');
+            successDiv.classList.add('bg-yellow-100', 'text-yellow-800');
         }
     }
 

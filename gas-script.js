@@ -101,14 +101,22 @@ function triggerGitHubSync_() {
 
 function json_(obj, callbackName) {
   var out = JSON.stringify(obj);
+  var response;
+
   if (callbackName) {
-    return ContentService
+    response = ContentService
       .createTextOutput(callbackName + '(' + out + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  } else {
+    response = ContentService
+      .createTextOutput(out)
+      .setMimeType(ContentService.MimeType.JSON);
   }
-  return ContentService
-    .createTextOutput(out)
-    .setMimeType(ContentService.MimeType.JSON);
+  
+  // 允许所有来源的跨域请求
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  
+  return response;
 }
 
 /**
