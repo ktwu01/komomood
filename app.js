@@ -14,20 +14,26 @@ class KomomoodApp {
         this.checkinMomo = document.getElementById('ci_momo');
         this.checkinKomo = document.getElementById('ci_komo');
         this.checkinNote = document.getElementById('ci_note');
-        
-        // Google Form prefill config (TO BE CONFIGURED)
-        // Provide your live Google Form prefill base URL (e.g., https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url)
-        // And map each field to its entry.<ID> from a generated prefilled link
-        this.googleFormConfig = {
-            prefillBaseUrl: '', // REQUIRED: set by planner/executor when IDs are known
-            fieldMap: {
-                date: '',      // e.g., 'entry.1111111111'
-                kokoMood: '',  // e.g., 'entry.2222222222'
-                momoMood: '',  // e.g., 'entry.3333333333'
-                komoScore: '', // e.g., 'entry.4444444444'
-                note: ''       // e.g., 'entry.5555555555'
-            }
-        };
+
+        // Tooltip interaction state for mobile usability
+        this.tooltipLocked = false;
+        this.activeCellKey = null; // date string for the active cell
+
+		// Google Form prefill config (configured from provided prefilled link)
+		// Note: 'note' is optional. 'passphrase' will be auto-included if configured.
+		this.googleFormConfig = {
+			prefillBaseUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSf8XZ0Wp3NgCKBAbBY63KTC6wzyTnfa0sYZFYH7CQHZ1iffXA/viewform?usp=pp_url',
+			fieldMap: {
+				date: 'entry.171852347',
+				kokoMood: 'entry.1537924001',
+				momoMood: 'entry.1625555189',
+				komoScore: 'entry.1362123046',
+				note: 'entry.103218744'
+			},
+			optional: {
+				passphrase: { param: 'entry.1162583406', value: '0317' }
+			}
+		};
         
         this.init();
     }
@@ -119,8 +125,16 @@ class KomomoodApp {
             
             // Add hover events
             cell.addEventListener('mouseenter', (e) => this.showTooltip(e, date, entry));
-            cell.addEventListener('mouseleave', () => this.hideTooltip());
+            cell.addEventListener('mouseleave', () => this.hideTooltipIfNotLocked());
             cell.addEventListener('mousemove', (e) => this.updateTooltipPosition(e));
+
+            // Add click/tap events for mobile usability
+            cell.addEventListener('click', (e) => this.onCellClick(e, date, entry));
+            cell.addEventListener('touchstart', (e) => {
+                // Prevent synthetic mouse events after touch
+                e.preventDefault();
+                this.onCellClick(e, date, entry);
+            }, { passive: false });
             
             this.heatmapGrid.appendChild(cell);
         });
@@ -210,6 +224,27 @@ class KomomoodApp {
         this.tooltip.style.display = 'none';
     }
 
+    hideTooltipIfNotLocked() {
+        if (!this.tooltipLocked) {
+            this.hideTooltip();
+        }
+    }
+
+    onCellClick(event, date, entry) {
+        const dateKey = this.formatDate(date);
+        // Toggle behavior: if clicking the same active cell while locked, unlock and hide
+        if (this.tooltipLocked && this.activeCellKey === dateKey) {
+            this.tooltipLocked = false;
+            this.activeCellKey = null;
+            this.hideTooltip();
+            return;
+        }
+        // Lock tooltip to this cell and show/update its position
+        this.tooltipLocked = true;
+        this.activeCellKey = dateKey;
+        this.showTooltip(event, date, entry);
+    }
+
     clampScore(value) {
         const num = Number(value);
         if (Number.isNaN(num)) return 0;
@@ -276,6 +311,26 @@ class KomomoodApp {
         // ESC key to close
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.closeCheckinModal();
+        });
+
+        // Close tooltip when clicking outside of any heatmap cell
+        document.addEventListener('click', (e) => {
+            const target = e.target;
+            if (this.tooltipLocked && !(target && target.closest && target.closest('.heatmap-cell'))) {
+                this.tooltipLocked = false;
+                this.activeCellKey = null;
+                this.hideTooltip();
+            }
+        });
+
+        // Same for touch interactions
+        document.addEventListener('touchstart', (e) => {
+            const target = e.target;
+            if (this.tooltipLocked && !(target && target.closest && target.closest('.heatmap-cell'))) {
+                this.tooltipLocked = false;
+                this.activeCellKey = null;
+                this.hideTooltip();
+            }
         });
 
         // Default date = today
@@ -350,6 +405,12 @@ class KomomoodApp {
         if (note) params.set(fieldMap.note, note);
         // Common param often present in prefill URLs
         if (!prefillBaseUrl.includes('usp=')) params.set('usp', 'pp_url');
+
+        // Optional passphrase support
+        const pp = this.googleFormConfig.optional?.passphrase;
+        if (pp?.param && pp?.value) {
+            params.set(pp.param, pp.value);
+        }
 
         const finalUrl = prefillBaseUrl.includes('?')
             ? `${prefillBaseUrl}&${params.toString()}`

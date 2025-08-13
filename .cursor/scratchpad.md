@@ -51,6 +51,9 @@
    - 需要 5 级渐变色（蓝 → 粉）用于映射 mood/关系分值。热力图按周列、周内行（GitHub 贡献图布局）。
 4. 简洁实现。
    - 单页应用：`index.html` + `styles.css`（可选）+ `app.js` + `data/entries.json`，Tailwind 走 CDN，零构建即可部署。
+5. 无重定向一键提交（不跳转 Google Form）。
+   - 直接 POST 到 Google Form `formResponse` 需 `no-cors` 或隐藏 iframe，无法获知成功与错误详情，体验与可靠性一般（不推荐长期使用）。
+   - 最佳实践：使用 Google Apps Script（GAS）Web App 暴露 `doPost` 端点写入 Google Sheet，前端 `fetch` 后就地提示成功/失败；继续用 Actions 聚合为 `entries.json`。
 
 参考资料（@web）：
 - GitHub Pages 静态托管与限制（仅静态，无后端）— 官方文档：Creating a GitHub Pages site / About GitHub Pages。
@@ -125,9 +128,23 @@
 - Hover/点击显示当天详情（koko/momo/komo/note）。
 - 成功标准：有数据格子能显示详情，无数据显示“暂无打卡”。
 
+5a) 新增通行码输入与校验（passphrase, MMDD）
+- 表单新增输入框：占位符“MMDD”，辅助文案“通行码（2024MMDD 中的后四位）”。
+- 校验：正则 `^\d{4}$`，错误时阻止提交并提示。
+- 成功标准：输入不合规时明确提示；合规时可与其他字段一起提交。
+
 6) “打卡入口”与数据维护
 - v1：按钮链接到仓库 `data/entries.json`（Edit）；附 README 说明数据格式。
 - 成功标准：能通过网页引导，手动追加数据并生效。
+
+6b) 无重定向一键提交（推荐）：GAS Web App
+- 后端：在同账户下创建 GAS 项目，`doPost` 写入 Google Sheet（含 passphrase 校验），返回 `{ ok: true|false, error? }`，并设置 CORS 头。
+- 前端：改为 `fetch(webAppUrl, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({...}) })`，根据返回值显示成功/失败状态，不跳转。
+- 成功标准：提交后留在本页，显示“提交成功/失败”；失败有清晰错误信息，支持重试。
+
+6c) 备选（应急）：隐藏 iframe + Google Form `formResponse`
+- 风险：无回执、易受风控，不作为长期方案。
+- 成功标准：表面上不跳转，数据最终进入表单（仅应急测试用）。
 
 7) 部署与校验
 - 推送 `main`，验证 Pages 生效与样式正常。
@@ -143,6 +160,7 @@
 - [x] 2 提交基础骨架（`index.html` / `app.js` / `data/entries.json` 示例）
 - [x] 3 (UI Fix) 修正热力图布局与对齐（已实现，待你视觉确认）
 - [x] 4 (UI Fix) 修正 Legend 与标签对齐（已实现，待你视觉确认）
+- [ ] 5 实现交互详情（tooltip/弹层）
 - [ ] 5 实现交互详情（tooltip/弹层）
 - [ ] 6 “打卡入口”改为站内表单卡片（modal）→ 构造 Google Form 预填链接（modal 已完成，待提供 Google Form 预填映射以打通提交流程）
 - [ ] 7 Pages 部署验证
@@ -164,10 +182,12 @@
   - momoMood (1–5, 必填，步进 1)
   - komoScore (1–5, 必填，步进 1)
   - note (可选，最多 140 字)
+  - passphrase（必填，4 位数字，格式 MMDD；提示“2024MMDD 的后四位”）
 - **校验**: 必填项非空，分值范围 1–5，日期格式校验。
-- **提交行为**: 不直接本地写 JSON；使用 Google Form 预填链接（prefill）方式：
-  - 通过 Form 的 live URL/预填链接中 `entry.<ID>` 映射，将表单值拼接生成 URL
-  - 跳转到 Google Form（含预填值）→ 用户确认提交
+  - passphrase：正则 `^\d{4}$` 校验；错误时高亮输入并在表单顶部显示错误。
+- **提交行为**（二选一）：
+  - A 已有：Google Form 预填跳转（零后端，可靠）
+  - B 推荐：GAS Web App 直传（无重定向，返回 JSON，前端就地提示成功/失败）
 - **UI/交互**:
   - Modal 支持 Esc/遮罩点击关闭
   - 移动端全宽卡片；桌面端圆角卡片，淡入淡出动画
@@ -192,7 +212,9 @@
 - **Planner 根据用户反馈，新增了 UI/UX 修正任务。**
 - **Executor 已提交并推送 GitHub Actions 工作流与 CSV→JSON 转换脚本（可在 Actions 手动运行）。**
 - **UI 修正（热力图方向、Legend/日/月标签）已实现，等待你在页面上确认效果。**
-- **“去打卡”站内表单（modal）已实现，校验与预填链接拼接逻辑已就绪；待提供 Google Form 预填 `entry.<ID>` 映射后可完成跳转提交。**
+- **交互详情完善（待你确认）**：已新增移动端友好的 tooltip 行为（单元格点击/触摸可锁定展示，点击空白处关闭；鼠标移开在未锁定时自动隐藏）。若效果符合预期，请确认后我再在任务板勾选完成。
+- **“去打卡”站内表单（modal）已实现，已填入 Google Form 预填映射与暗号；可直接从页面提交并在新标签页打开 Google Form 进行确认。**
+ - **GAS Web App 已成功部署（Version 3）**：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`。下一步：前端接入直传（urlencoded，无预检）并在页面提示提交结果。
 
 ## Executor's Feedback or Assistance Requests
 - 如需私密访问，请确认是否采用 Cloudflare Access（需要域名与 DNS 变更）。
@@ -273,6 +295,7 @@ YES. what should i do?
 - 在 GitHub 仓库中存在并可被 Pages 访问到的 `data/entries.json`；
 - 手动触发工作流后数分钟内，`entries.json` 被最新表单数据更新；
 - 页面“去打卡”按钮能打开表单并成功提交；
+  或切换到“无重定向一键提交”，提交后留在本页并显示成功/失败提示；
 - 热力图正常展示最新 12 个月数据，颜色映射与详情正确。
 
 ### Project Status Board（补充小任务）
@@ -282,6 +305,33 @@ YES. what should i do?
 - [x] 新增 `.github/scripts/csv_to_entries.(js|py)` 转换脚本
 - [ ] 在页面加“去打卡”站内表单（modal），并在提交时跳转到 Google Form 预填链接（等待 `entry.<ID>` 映射）
 - [ ] 首次工作流运行成功，仓库内 `data/entries.json` 更新
+ - [ ] 新增 passphrase 输入框（MMDD）与前端校验
+  - [x] （推荐）部署 GAS Web App 端点（doPost）写入 Sheet，返回 JSON（已部署：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`）
+  - [ ] 前端切换为直传（GAS，使用 `application/x-www-form-urlencoded` 以避免预检），提交后就地提示成功/失败（不跳转）
+ - [ ] 备选：隐藏 iframe + Google Form `formResponse`（仅应急）
+  - 成功标准：
+    - passphrase 输入框在移动与桌面均显示良好，错误格式有明确提示
+    - GAS 端点返回 `{ ok: true }` 时，页面显示“提交成功”；返回 `{ ok:false, error }` 时显示错误并可重试
+    - Actions 运行后，`data/entries.json` 包含新记录，前端热力图更新
+
+## Repository Secrets（for GitHub Actions）
+- 位置：GitHub 仓库 → Settings → Security → Secrets and variables → Actions → New repository secret
+- 必需
+  - GF_CSV_URL：Google Sheet 的 CSV 导出直链
+    - 示例格式：`https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=0`
+    - 用途：`.github/workflows/sync-form.yml` 中 `curl -L "$GF_CSV_URL" -o data/sheet.csv`
+- 可选
+  - GF_PASSPHRASE：例如 `0317`
+    - 用途：在转换脚本中过滤无效行（`.github/scripts/csv_to_entries.js` 通过 `process.env.GF_PASSPHRASE` 使用）
+
+注意
+- 不要把实际的密钥或私有链接提交进代码库；仅通过 Secrets 配置。
+- GAS Web App URL 为公网可访问端点，属于公开信息，不需要放入 Secrets（前端会直接调用）。
+
+验证
+- 在 Actions 里手动运行“Sync Google Form to entries.json”工作流：
+  - 步骤“Download CSV from Google Sheet”应成功且无“GF_CSV_URL secret is not set”错误。
+  - 步骤“Convert CSV to entries.json”应输出“Wrote N entries…”，并在后续步骤中触发自动提交 `data/entries.json`。
 
 ## Executor's Feedback or Assistance Requests（更新）
 - **User has provided Google Sheet URL.** Next step is to set the public CSV link as a repository secret named `GF_CSV_URL`.
@@ -294,5 +344,155 @@ YES. what should i do?
 - 确认日历展示范围：默认近 365 天；是否需要固定某年或更长跨度？
   OK：默认近 365 天。
 
+- 待办/阻塞：请提供 Google Form 的预填映射（`prefillBaseUrl` 以及各字段对应的 `entry.<ID>`：`date/kokoMood/momoMood/komoScore/note`），我将把这些值写入 `app.js` 的 `googleFormConfig`，完成从站内表单到 Google Form 的跳转提交流程。
+
 ## Architecture Decision（更新）
 - 数据输入采用“站内表单体验 + Google Form 预填确认”的混合方案：前端仅做 UI 与参数构造，不直接写入仓库；后端仍通过 Google Sheet → GitHub Actions 聚合生成静态 JSON，保持静态站点的稳定性与可维护性。
+- v1.1 推荐路线：增加 GAS Web App（无重定向一键提交、返回 JSON），与既有 Actions 流程兼容。
+
+## GAS Web App Implementation Guide（Step-by-step）
+前置：确保 Google Sheet 已建立并用于 Actions 聚合（第一行作为表头，建议列：`date, kokoMood, momoMood, komoScore, note, passphrase, createdAt`）。
+
+1) 创建与授权
+- 方式A（推荐）：打开目标 Google Sheet → 扩展程序 → Apps Script（作为绑定脚本）。
+- 方式B：访问 script.new 创建独立脚本项目（需在代码里用 `SpreadsheetApp.openById('<SHEET_ID>')` 指向表格）。
+
+2) 粘贴脚本（示例）
+```javascript
+// Replace SHEET_ID and SHEET_NAME accordingly
+const SHEET_ID = 'PUT_YOUR_SHEET_ID';
+const SHEET_NAME = 'Sheet1';
+const ALLOW_ORIGIN = '*'; // 可改为 'https://ktwu01.github.io' 或你的 Pages 域名
+
+function doPost(e) {
+  return handleRequest_(e);
+}
+
+function doGet(e) {
+  return json_({ ok: true, service: 'komomood', ts: new Date().toISOString() });
+}
+
+function handleRequest_(e) {
+  try {
+    // 为避免预检（OPTIONS），前端使用 application/x-www-form-urlencoded
+    var params = e && e.parameter ? e.parameter : {};
+    var date = String(params.date || '').slice(0, 10);
+    var koko = clamp_(params.kokoMood);
+    var momo = clamp_(params.momoMood);
+    var komo = clamp_(params.komoScore);
+    var note = String(params.note || '');
+    var pass = String(params.passphrase || '').trim();
+
+    // 简单校验：passphrase 固定 '0317' 或 MMDD 四位
+    var passOk = pass === '0317' || /^\d{4}$/.test(pass);
+    if (!date || !koko || !momo || !komo) return json_({ ok: false, error: 'invalid_payload' });
+    if (!passOk) return json_({ ok: false, error: 'invalid_passphrase' });
+
+    var ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActive();
+    var sh = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
+    sh.appendRow([date, koko, momo, komo, note, pass, new Date()]);
+    return json_({ ok: true });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
+}
+
+function clamp_(n) {
+  n = Number(n);
+  if (!isFinite(n)) return null;
+  return Math.max(1, Math.min(5, Math.trunc(n)));
+}
+
+function json_(obj) {
+  var out = ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+  out.setHeader('Access-Control-Allow-Origin', ALLOW_ORIGIN);
+  out.setHeader('Access-Control-Allow-Methods', 'POST, GET');
+  out.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  return out;
+}
+```
+
+3) 部署为 Web App
+- 菜单：部署 → 新部署 → 选择“网络应用程序”。
+- 说明：Execution as = Me（我），Who has access = Anyone。
+- 部署后复制 Web App URL（形如 `https://script.google.com/macros/s/.../exec`）。
+ - 已部署（用户提供）：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`（Version 3，2025-08-13 08:28）
+
+4) 前端集成（避免预检）
+- 使用 `application/x-www-form-urlencoded` 发送，避免 CORS 预检：
+```js
+// const webAppUrl = '你的 Web App URL';
+const params = new URLSearchParams({
+  date, kokoMood, momoMood, komoScore, note, passphrase
+});
+await fetch(webAppUrl, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+  body: params.toString(),
+});
+// 返回体为 JSON（GAS 端），前端可 .json() 解析并提示 ok/错误
+```
+
+5) 验证流程
+- 使用 curl 或 Postman 先测通：
+```bash
+curl -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'date=2025-01-15&kokoMood=4&momoMood=5&komoScore=4&note=test&passphrase=0317' \
+  'https://script.google.com/macros/s/XXXX/exec'
+```
+- 确认 Google Sheet 新增行；随后手动触发 Actions，查看 `data/entries.json` 更新；本地或 Pages 端刷新热力图验证。
+
+6) 安全与防滥用（基础）
+- 在脚本中将 `ALLOW_ORIGIN` 设为你的 Pages 域名。
+- 前端与 GAS 双端校验字段与分值范围；必要时增加速率限制或 Turnstile。
+- 如果后续需要密钥，可考虑在 GAS 校验自定义 token；当前场景下 passphrase 足够。
+
+## Google Form Setup Guide（Step-by-step）
+1) 创建表单（forms.google.com）
+- 新建空白表单，命名为：komomood Check-in
+- 添加问题（全部设为 Required/必填，除 note 外）：
+  - date：类型建议“Short answer/简答”，开启响应验证（正则）：^\\d{4}-\\d{2}-\\d{2}$，提示“YYYY-MM-DD”
+  - kokoMood：类型“Short answer/简答”，数字 1–5 验证（最小 1，最大 5）
+  - momoMood：同上（1–5）
+  - komoScore：同上（1–5）
+  - note：类型“Paragraph/段落”，可选，最大 140 字（描述里提示）
+- 说明：将 date 设为“简答”便于预填生成单一的 entry.<ID> 参数；若使用“日期”类型，Google 会拆成 entry.<ID>_year/_month/_day，前端需特别处理。
+
+2) 设置与分享
+- 在“设置”中关闭“收集邮箱”等限制；允许任何持有链接者提交
+- 右上角“发送”→ 复制“表单链接”（用户真实填写入口）
+
+3) 关联 Google Sheet
+- 顶部切到“回复”→ 连接到表格 → 创建新表格
+- 打开该表格，右上角“共享”→ 设为“Anyone with the link can view”
+
+4) 获取 CSV 导出直链（供 Actions 使用）
+- 访问该表格后，记录地址栏中的 SHEET_ID
+- 选中目标工作表（通常第一个，gid=0），形成：
+  - https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=0
+- 将该链接写入仓库 Secret：GF_CSV_URL
+
+5) 获取 Google Form 预填链接并提取映射
+- 表单编辑页 → 右上角三点 → 获取预填链接（Get pre-filled link）
+- 用示例值填一遍（date=2025-01-15；koko/momo/komo=1–5；note=测试）→ 点击“获取链接”→ 复制
+- 预填链接（实际）示例：
+  - https://docs.google.com/forms/d/e/1FAIpQLSf8XZ0Wp3NgCKBAbBY63KTC6wzyTnfa0sYZFYH7CQHZ1iffXA/viewform?usp=pp_url&entry.171852347=2025-08-13&entry.1537924001=5&entry.1625555189=2&entry.1362123046=5&entry.1162583406=0317
+- 记录：
+  - prefillBaseUrl：保留到 viewform?usp=pp_url，去掉所有 entry.* 参数
+  - fieldMap（已填入 app.js）：
+    - date → entry.171852347
+    - kokoMood → entry.1537924001
+    - momoMood → entry.1625555189
+    - komoScore → entry.1362123046
+    - note → entry.103218744
+  - optional.passphrase：entry.1162583406，值 0317（已在前端自动附加；Actions 侧也可用 GF_PASSPHRASE 过滤）
+- 若 date 使用“日期”类型，会出现 entry.<ID>_year/_month/_day 三个参数；可回到第 1 步改为“简答+正则”，或告知我 3 个参数名，我将调整 `app.js` 以适配。
+
+6) 可选：增加“暗号/passphrase”题
+- 类型：Short answer，提示输入固定值，例如“0317”，并设为必填
+- 在 GitHub Secrets 设置 GF_PASSPHRASE=0317，Actions 会过滤不匹配的行
+
+7) 成功标准
+- 提交一条真实表单 → 等待 Actions 手动/定时运行 → 仓库 `data/entries.json` 更新
+- 页面加载显示最新记录，tooltip 展示正确
