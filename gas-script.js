@@ -110,3 +110,29 @@ function json_(obj, callbackName) {
     .createTextOutput(out)
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+/**
+ * Test function to debug GitHub API connectivity
+ * Run this manually in GAS editor to test
+ */
+function testGitHubSync() {
+  console.log('=== Testing GitHub API connectivity ===');
+  
+  var githubToken = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  console.log('GITHUB_TOKEN exists:', githubToken ? 'YES (length: ' + githubToken.length + ')' : 'NO');
+  
+  if (!githubToken) {
+    console.log('ERROR: GITHUB_TOKEN not set in Script Properties');
+    return;
+  }
+  
+  console.log('GITHUB_REPO:', GITHUB_REPO);
+  console.log('GITHUB_WORKFLOW_FILE:', GITHUB_WORKFLOW_FILE);
+  
+  try {
+    triggerGitHubSync_();
+    console.log('SUCCESS: GitHub sync test completed');
+  } catch (error) {
+    console.log('ERROR: GitHub sync failed -', error.toString());
+  }
+}
