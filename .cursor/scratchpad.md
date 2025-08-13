@@ -190,7 +190,7 @@
 - 规划阶段完成：确认 v1 使用静态 JSON；设计数据 schema、色阶、布局与任务拆分。
 - **Executor 已完成基础骨架提交。**
 - **Planner 根据用户反馈，新增了 UI/UX 修正任务。**
-- **Planner 新增站内打卡表单（Modal）方案及实施步骤。**
+- **Executor 已在本地新增 GitHub Actions 工作流与 CSV→JSON 转换脚本，待确认后提交推送。**
 
 ## Executor's Feedback or Assistance Requests
 - 如需私密访问，请确认是否采用 Cloudflare Access（需要域名与 DNS 变更）。
@@ -199,10 +199,14 @@ NO
 - 如需网页表单直填，建议 v1.1 采用 Issues + Actions；是否需要我先行搭好 Actions（使用默认 GITHUB_TOKEN 权限）？
 YES. what should i do?
 
-- 请提供：
-  1) Google Form live URL（可填写的公开链接）
-  2) 一条“获取预填链接”生成的样例 URL（含参数），便于提取 `entry.<ID>` 对应关系
-  3) 是否需要在 Form 中增加“暗号”字段（默认值：0317）以便过滤
+- 请确认两点：
+  1) `GF_CSV_URL` 是否为 CSV 导出直链格式：`https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=<GID>`（你提供的编辑链接对应 gid=0，则导出为 `.../export?format=csv&gid=0`）。
+  2) 提供 Google Form 的 live URL 与一条“获取预填链接”的样例 URL，以便我提取各字段的 `entry.<ID>` 并填入 `app.js` 的 `googleFormConfig`。
+
+- 是否同意我现在提交并推送以下新增文件：
+  - `.github/workflows/sync-form.yml`
+  - `.github/scripts/csv_to_entries.js`
+  推送后你即可在 GitHub Actions 手动触发并验证 `entries.json` 是否更新。
 
 ## Lessons
 - GitHub Pages 仅静态；数据可放仓库 JSON 或来自 Issues，经 Actions 聚合。
@@ -272,8 +276,8 @@ YES. what should i do?
 ### Project Status Board（补充小任务）
 - [x] 创建 Google Form（含 date/koko/momo/komo/note 字段）并绑定 Sheet
 - [x] 开启 Sheet 公共只读，拿到 CSV 导出链接并保存为仓库 Secret：`GF_CSV_URL`
-- [ ] 新增 `.github/workflows/sync-form.yml`（手动 + 定时触发）
-- [ ] 新增 `.github/scripts/csv_to_entries.(js|py)` 转换脚本
+- [x] 新增 `.github/workflows/sync-form.yml`（手动 + 定时触发）
+- [x] 新增 `.github/scripts/csv_to_entries.(js|py)` 转换脚本
 - [ ] 在页面加“去打卡”站内表单（modal），并在提交时跳转到 Google Form 预填链接
 - [ ] 首次工作流运行成功，仓库内 `data/entries.json` 更新
 

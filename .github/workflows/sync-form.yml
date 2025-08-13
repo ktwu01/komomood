@@ -1,0 +1,46 @@
+name: Sync Google Form to entries.json
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure data directory exists
+        run: mkdir -p data
+
+      - name: Download CSV from Google Sheet
+        env:
+          GF_CSV_URL: ${{ secrets.GF_CSV_URL }}
+        run: |
+          if [ -z "$GF_CSV_URL" ]; then
+            echo "GF_CSV_URL secret is not set" >&2
+            exit 1
+          fi
+          curl -L "$GF_CSV_URL" -o data/sheet.csv
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Convert CSV to entries.json
+        env:
+          GF_PASSPHRASE: ${{ secrets.GF_PASSPHRASE }}
+        run: node .github/scripts/csv_to_entries.js
+
+      - name: Commit changes (if any)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(data): sync entries.json from Google Sheet'
+          file_pattern: data/entries.json
+

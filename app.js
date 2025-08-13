@@ -5,6 +5,29 @@ class KomomoodApp {
         this.tooltip = document.getElementById('tooltip');
         this.loading = document.getElementById('loading');
         this.heatmapGrid = document.getElementById('heatmapGrid');
+        // Check-in modal elements
+        this.checkinModal = document.getElementById('checkinModal');
+        this.checkinForm = document.getElementById('checkinForm');
+        this.checkinError = document.getElementById('checkinError');
+        this.checkinDate = document.getElementById('ci_date');
+        this.checkinKoko = document.getElementById('ci_koko');
+        this.checkinMomo = document.getElementById('ci_momo');
+        this.checkinKomo = document.getElementById('ci_komo');
+        this.checkinNote = document.getElementById('ci_note');
+        
+        // Google Form prefill config (TO BE CONFIGURED)
+        // Provide your live Google Form prefill base URL (e.g., https://docs.google.com/forms/d/e/FORM_ID/viewform?usp=pp_url)
+        // And map each field to its entry.<ID> from a generated prefilled link
+        this.googleFormConfig = {
+            prefillBaseUrl: '', // REQUIRED: set by planner/executor when IDs are known
+            fieldMap: {
+                date: '',      // e.g., 'entry.1111111111'
+                kokoMood: '',  // e.g., 'entry.2222222222'
+                momoMood: '',  // e.g., 'entry.3333333333'
+                komoScore: '', // e.g., 'entry.4444444444'
+                note: ''       // e.g., 'entry.5555555555'
+            }
+        };
         
         this.init();
     }
@@ -187,6 +210,12 @@ class KomomoodApp {
         this.tooltip.style.display = 'none';
     }
 
+    clampScore(value) {
+        const num = Number(value);
+        if (Number.isNaN(num)) return 0;
+        return Math.max(1, Math.min(5, Math.trunc(num)));
+    }
+
     updateStats() {
         const totalDays = this.entries.length;
         const avgKomoScore = totalDays > 0 
@@ -235,15 +264,99 @@ class KomomoodApp {
 
     setupEventListeners() {
         const checkinBtn = document.getElementById('checkinBtn');
-        checkinBtn.addEventListener('click', () => {
-            // For now, link to the data file for manual editing
-            // Later this will be replaced with Google Forms integration
-            window.open('https://github.com/ktwu01/komomood/edit/main/data/entries.json', '_blank');
+        if (checkinBtn) {
+            checkinBtn.addEventListener('click', () => this.openCheckinModal());
+        }
+
+        // Close modal via overlay or close button(s)
+        document.querySelectorAll('[data-modal-close]').forEach(el => {
+            el.addEventListener('click', () => this.closeCheckinModal());
         });
+
+        // ESC key to close
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this.closeCheckinModal();
+        });
+
+        // Default date = today
+        if (this.checkinDate) {
+            this.checkinDate.value = new Date().toISOString().split('T')[0];
+        }
+
+        // Submit handler
+        if (this.checkinForm) {
+            this.checkinForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.submitCheckinForm();
+            });
+        }
     }
 
     hideLoading() {
         this.loading.style.display = 'none';
+    }
+
+    openCheckinModal() {
+        if (!this.checkinModal) return;
+        this.checkinError?.classList.add('hidden');
+        this.checkinModal.classList.remove('hidden');
+        // Focus first field
+        setTimeout(() => this.checkinDate?.focus(), 0);
+    }
+
+    closeCheckinModal() {
+        if (!this.checkinModal) return;
+        this.checkinModal.classList.add('hidden');
+    }
+
+    submitCheckinForm() {
+        // Validate
+        const date = this.checkinDate?.value?.trim();
+        const kokoMood = this.clampScore(this.checkinKoko?.value);
+        const momoMood = this.clampScore(this.checkinMomo?.value);
+        const komoScore = this.clampScore(this.checkinKomo?.value);
+        const note = (this.checkinNote?.value || '').trim();
+
+        const errorMessages = [];
+        if (!date) errorMessages.push('请选择日期');
+        if (!(kokoMood >= 1 && kokoMood <= 5)) errorMessages.push('Koko 心情需为 1-5');
+        if (!(momoMood >= 1 && momoMood <= 5)) errorMessages.push('Momo 心情需为 1-5');
+        if (!(komoScore >= 1 && komoScore <= 5)) errorMessages.push('关系分值需为 1-5');
+
+        // Config check
+        const { prefillBaseUrl, fieldMap } = this.googleFormConfig;
+        const missingConfig = !prefillBaseUrl || !fieldMap?.date || !fieldMap?.kokoMood || !fieldMap?.momoMood || !fieldMap?.komoScore || !fieldMap?.note;
+
+        if (errorMessages.length > 0 || missingConfig) {
+            const msg = [
+                ...errorMessages,
+                ...(missingConfig ? ['表单预填配置未完成：请在 app.js 中设置 `googleFormConfig.prefillBaseUrl` 与各字段的 `entry.<ID>` 映射。'] : [])
+            ].join('；');
+            if (this.checkinError) {
+                this.checkinError.textContent = msg;
+                this.checkinError.classList.remove('hidden');
+            } else {
+                alert(msg);
+            }
+            return;
+        }
+
+        // Build prefilled URL
+        const params = new URLSearchParams();
+        params.set(fieldMap.date, date);
+        params.set(fieldMap.kokoMood, String(kokoMood));
+        params.set(fieldMap.momoMood, String(momoMood));
+        params.set(fieldMap.komoScore, String(komoScore));
+        if (note) params.set(fieldMap.note, note);
+        // Common param often present in prefill URLs
+        if (!prefillBaseUrl.includes('usp=')) params.set('usp', 'pp_url');
+
+        const finalUrl = prefillBaseUrl.includes('?')
+            ? `${prefillBaseUrl}&${params.toString()}`
+            : `${prefillBaseUrl}?${params.toString()}`;
+
+        window.open(finalUrl, '_blank');
+        this.closeCheckinModal();
     }
 
     showError(message) {
