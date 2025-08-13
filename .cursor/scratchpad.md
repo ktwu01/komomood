@@ -335,14 +335,38 @@ YES. what should i do?
 
 ## Executor's Feedback or Assistance Requests（更新）
 
-### ✅ Completed: GAS Frontend Integration 
-- **前端集成已完成**：
-  - ✅ 新增 passphrase 输入框（MMDD 格式，正则校验 `^\d{4}$`）
-  - ✅ 实现直接提交到 GAS（使用 `application/x-www-form-urlencoded` 避免预检）
-  - ✅ 添加成功/失败 UI 反馈（提交后显示结果，不跳转）
-  - ✅ 保留 Google Form 作为备用方案（如果 GAS 失败会自动降级）
+### 🔴 **DEBUG: 前端仍在弹出 Google Form，而非直接使用 GAS**
 
-### 🟡 **待用户修复：GAS 脚本缺少函数**
+#### 问题分析 (Planner)
+- **用户期望**：点击"提交"按钮时直接使用 GAS 进行数据注入，无弹窗，就地显示结果
+- **当前实际行为**：仍然弹出 Google Form 页面（新标签页）
+- **根本原因**：前端代码 (`app.js` 第419行) 当前实现的是 Google Form 预填链接跳转，而不是 GAS 直传
+
+#### 当前代码问题定位
+```javascript
+// app.js 第419行 - 当前实现
+window.open(finalUrl, '_blank');  // ❌ 这会打开 Google Form
+```
+
+#### 预期实现应该是
+```javascript
+// 应该改为 GAS 直传
+const response = await fetch(gasWebAppUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({...})
+});
+const result = await response.json();
+// 显示 result.ok ? "成功" : "失败"
+```
+
+#### 修复方案
+1. **更新前端代码**：将 `submitCheckinForm()` 方法改为直接调用 GAS Web App
+2. **使用已部署的 GAS 端点**：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`
+3. **添加 passphrase 校验**：确保前端发送正确的 4 位数字格式
+4. **实现错误处理**：显示 GAS 返回的成功/失败状态
+
+### 🟡 **已知的 GAS 脚本问题**
 - **发现问题**：通过 curl 测试 GAS 端点时返回错误：`{"ok":false,"error":"ReferenceError: clamp_ is not defined"}`
 - **原因**：您的 GAS 脚本可能缺少 `clamp_` 函数定义
 - **解决方案**：请在您的 GAS 脚本中确保包含完整的代码，特别是这个函数：
@@ -354,10 +378,28 @@ function clamp_(n) {
 }
 ```
 
-### 📝 待处理任务
-- 修复 GAS 脚本后，前端将能够成功提交数据到 Google Sheet
-- 运行 GitHub Actions 同步工作流以验证数据流程
-- 测试完整的端到端流程：前端 → GAS → Sheet → Actions → entries.json → 可视化更新
+SOLVED: added function clamp_(n) in GAS.
+
+Deployment successfully updated.
+Version 4 on Aug 13, 2025, 8:58 AM
+Deployment ID
+AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc-MAW3HLeesbobuXzbz3_XIqGRbdDw
+Web app
+URL
+https://script.google.com/macros/s/AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc-MAW3HLeesbobuXzbz3_XIqGRbdDw/exec
+
+
+
+
+### 📝 即将处理的任务 (Executor)
+1. **修复前端代码**：将 Google Form 跳转改为 GAS 直传
+2. **添加 passphrase 输入框处理**：从表单中获取 passphrase 值
+3. **实现成功/失败 UI 反馈**：基于 GAS 返回的 JSON 响应
+4. **保留 Google Form 作为备用方案**：如果 GAS 失败，自动降级到 Google Form
+
+### 📝 待用户处理的任务
+- 修复 GAS 脚本中缺少的 `clamp_` 函数
+- 测试 GAS 端点返回正确的 JSON 响应
 
 ## Architecture Decision（更新）
 - 数据输入采用“站内表单体验 + Google Form 预填确认”的混合方案：前端仅做 UI 与参数构造，不直接写入仓库；后端仍通过 Google Sheet → GitHub Actions 聚合生成静态 JSON，保持静态站点的稳定性与可维护性。
