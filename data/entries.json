@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "date": "2025-06-01",
+    "kokoMood": 1,
+    "momoMood": 1,
+    "komoScore": 1,
+    "note": "test"
+  }
+]

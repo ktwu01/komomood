@@ -173,8 +173,8 @@
 - [x] **SOLUTION PROVIDED**: 提供完整工作的 GAS 脚本
 
 ### 🎯 FINAL PHASE: End-to-End Testing (Ready to Execute)
-- [ ] **TEST-1**: 更新前端 GAS URL 并测试提交
-- [ ] **TEST-2**: 验证 GitHub Actions 数据同步  
+- [x] **TEST-1**: 更新前端 GAS URL 并测试提交 ✅ **COMPLETED** - GAS URL updated to V5 and deployed, data submission verified
+- [ ] **TEST-2**: 验证 GitHub Actions 数据同步 🔄 **IN PROGRESS** - Ready to trigger workflow
 - [ ] **TEST-3**: 确认完整数据流工作
 - [ ] **PROJECT-COMPLETE**: 标记项目完成状态
 
@@ -230,11 +230,82 @@
  - **GAS Web App 已成功部署（Version 3）**：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`。下一步：前端接入直传（urlencoded，无预检）并在页面提示提交结果。
 
 ## Executor's Feedback or Assistance Requests
-- 如需私密访问，请确认是否采用 Cloudflare Access（需要域名与 DNS 变更）。
-NO
 
-- 如需网页表单直填，建议 v1.1 采用 Issues + Actions；是否需要我先行搭好 Actions（使用默认 GITHUB_TOKEN 权限）？
-YES. what should i do?
+### ✅ **TEST-1 COMPLETED** (2025-08-13 9:30 AM)
+- **Action Taken**: Updated frontend GAS URL from V4 to V5
+- **Git Commit**: `78ec88d` - "fix: Update GAS Web App URL to V5 with fixed date field handling"
+- **Deployment**: Pushed to GitHub, automatically deploying to GitHub Pages
+- **Status**: ✅ Ready for manual testing
+
+### 🧪 **NEXT TESTING STEPS** (Ready for User)
+**Please test the updated functionality:**
+
+1. **Visit Website**: `https://ktwu01.github.io/komomood/` (wait 2-3 minutes for deployment)
+2. **Test Submission**:
+   - Click "去打卡" button
+   - Fill out all fields including passphrase: `0317`
+   - Click "提交" button
+   - **Expected Result**: Should show green success message without opening Google Form
+3. **Check Google Sheets**: Verify that the date field shows the correct date (not 12/31/1899)
+
+### 📋 **What to Report Back**
+- Did the form submission work without opening Google Form?
+- Does the success message appear?
+- Is the data in Google Sheets with correct date formatting?
+- Any error messages or unexpected behavior?
+
+### ✅ **TEST-1 VERIFICATION COMPLETE** ✅
+**All functionality confirmed working:**
+- ✅ GAS direct submission (no Google Form popup)
+- ✅ Green success message displayed  
+- ✅ Modal closes after 2 seconds
+- ✅ **CRITICAL**: Date field shows `2025-06-01` (correct format, not `12/31/1899`)
+- ✅ All data fields captured correctly in Google Sheets
+
+**V5 GAS script has completely resolved the date issue!** 🎯
+
+### ✅ **TEST-2: GitHub Actions Workflow Triggered Successfully**
+**Workflow Status**: ✅ Completed in 14 seconds
+**Issue Found**: 🔍 `entries.json` is empty `[]` after sync
+
+### 🔧 **Diagnostic Results**:
+- ✅ **CSV Conversion Script**: Works correctly locally with test data
+- ✅ **Passphrase Handling**: Script accepts `317` correctly
+- ❌ **GitHub Actions Result**: Empty JSON suggests CSV download or parsing issue
+
+### 🎯 **Root Cause Analysis**:
+Most likely issues:
+1. **Missing `GF_CSV_URL` secret** in repository
+2. **Missing `GF_PASSPHRASE=317` secret** in repository  
+3. **CSV export URL permissions** issue
+4. **CSV format mismatch** between Google Sheets export and script expectations
+
+### 🔍 **ROOT CAUSE IDENTIFIED**: Google Sheets Access Issue
+
+**Issue**: Google Sheet is not publicly accessible - CSV export returns login page instead of data.
+
+### 📋 **SOLUTION STEPS**:
+
+**Step 1: Make Google Sheet Public**
+1. Open: `https://docs.google.com/spreadsheets/d/1E2xzJoxc2K2itz0-5uFKpbhmYM3vNyrtu3nopCVL2hY/edit`
+2. Click "Share" (top right)
+3. Change access to "Anyone with the link can **view**"
+4. Click "Done"
+
+### ✅ **SOLUTION WORKING**: Published Google Sheets URL Verified
+
+**Published CSV URL**: [https://docs.google.com/spreadsheets/d/e/2PACX-1vQrBgvUornQiWoswN_zWFCLqs-pk5k0lGfTWxLhIMrz2BI6NQ4WX4js-3tjc4uZThWZuoioiqM6bwUP/pub?gid=1154793977&single=true&output=csv](https://docs.google.com/spreadsheets/d/e/2PACX-1vQrBgvUornQiWoswN_zWFCLqs-pk5k0lGfTWxLhIMrz2BI6NQ4WX4js-3tjc4uZThWZuoioiqM6bwUP/pub?gid=1154793977&single=true&output=csv)
+
+✅ **Local Testing Successful**: CSV converts to correct JSON format
+
+**Step 2: Set Repository Secrets**
+- Go to: `https://github.com/ktwu01/komomood/settings/secrets/actions`
+- Add these secrets:
+  - **`GF_CSV_URL`**: `https://docs.google.com/spreadsheets/d/e/2PACX-1vQrBgvUornQiWoswN_zWFCLqs-pk5k0lGfTWxLhIMrz2BI6NQ4WX4js-3tjc4uZThWZuoioiqM6bwUP/pub?gid=1154793977&single=true&output=csv`
+  - **`GF_PASSPHRASE`**: `317`
+
+**Step 3: Re-trigger Workflow**
+- Manually run "Sync Google Form to entries.json" workflow again
 
 - 请确认两点：
   1) `GF_CSV_URL` 是否为 CSV 导出直链格式：`https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=<GID>`（你提供的编辑链接对应 gid=0，则导出为 `.../export?format=csv&gid=0`）。
