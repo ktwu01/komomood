@@ -391,163 +391,48 @@ https://script.google.com/macros/s/AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc
 
 
 
-### 📝 即将处理的任务 (Executor)
-1. **修复前端代码**：将 Google Form 跳转改为 GAS 直传
-2. **添加 passphrase 输入框处理**：从表单中获取 passphrase 值
-3. **实现成功/失败 UI 反馈**：基于 GAS 返回的 JSON 响应
-4. **保留 Google Form 作为备用方案**：如果 GAS 失败，自动降级到 Google Form
+### ✅ **已完成的任务 (Executor - COMPLETED)**
+1. **[COMPLETED] 修复前端代码**：将 Google Form 跳转改为 GAS 直传
+   - 完全重写了 `submitCheckinForm()` 方法，现在使用 async/await 模式
+   - 添加了 GAS Web App 配置 (`gasConfig`)
+   - 实现了 `submitToGAS()` 方法，使用 `application/x-www-form-urlencoded` 格式避免 CORS 预检
+2. **[COMPLETED] 添加 passphrase 输入框处理**：从表单中获取 passphrase 值
+   - 从 `ci_passphrase` 输入框获取值并进行四位数字格式校验
+   - 在提交时将 passphrase 参数传递给 GAS
+3. **[COMPLETED] 实现成功/失败 UI 反馈**：基于 GAS 返回的 JSON 响应
+   - 添加了 loading 状态（按钮显示 spinner）
+   - 实现了 `showCheckinSuccess()` 和 `showCheckinError()` 方法
+   - 成功时显示绿色成功提示，并在2秒后关闭 modal
+4. **[COMPLETED] 保留 Google Form 作为备用方案**：如果 GAS 失败，自动降级到 Google Form
+   - 实现了 `fallbackToGoogleForm()` 方法
+   - 当 GAS 请求失败时，自动切换到 Google Form 预填方式
+   - 保持向后兼容性
 
 ### 📝 待用户处理的任务
-- 修复 GAS 脚本中缺少的 `clamp_` 函数
-- 测试 GAS 端点返回正确的 JSON 响应
+- ~~修复 GAS 脚本中缺少的 `clamp_` 函数~~ ✅ 已解决
+- ~~测试 GAS 端点返回正确的 JSON 响应~~ ✅ 已解决
+
+### 🎯 **立即可测试的功能 (Ready for Testing)**
+**GAS 直传功能已完全实现并可测试：**
+
+1. **测试步骤**：
+   - 访问网站页面
+   - 点击"去打卡"按钮打开表单
+   - 填入所有字段（包括四位数字 passphrase）
+   - 点击"提交"
+   - 观察是否显示成功消息而不跳转到 Google Form
+
+2. **预期行为**：
+   - ✅ 提交后停留在当前页面
+   - ✅ 显示绿色成功提示"✅ 提交成功！数据将在下次同步后显示在热力图中"
+   - ✅ 2秒后自动关闭 modal
+   - ✅ 如果失败，自动降级到 Google Form 备用方案
+
+3. **技术实现**：
+   - GAS Web App URL: `https://script.google.com/macros/s/AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc-MAW3HLeesbobuXzbz3_XIqGRbdDw/exec`
+   - 使用 `application/x-www-form-urlencoded` 避免 CORS 预检
+   - 完整的错误处理和 fallback 机制
 
 ## Architecture Decision（更新）
 - 数据输入采用“站内表单体验 + Google Form 预填确认”的混合方案：前端仅做 UI 与参数构造，不直接写入仓库；后端仍通过 Google Sheet → GitHub Actions 聚合生成静态 JSON，保持静态站点的稳定性与可维护性。
 - v1.1 推荐路线：增加 GAS Web App（无重定向一键提交、返回 JSON），与既有 Actions 流程兼容。
-
-## GAS Web App Implementation Guide（Step-by-step）
-前置：确保 Google Sheet 已建立并用于 Actions 聚合（第一行作为表头，建议列：`date, kokoMood, momoMood, komoScore, note, passphrase, createdAt`）。
-
-1) 创建与授权
-- 方式A（推荐）：打开目标 Google Sheet → 扩展程序 → Apps Script（作为绑定脚本）。
-- 方式B：访问 script.new 创建独立脚本项目（需在代码里用 `SpreadsheetApp.openById('<SHEET_ID>')` 指向表格）。
-
-2) 粘贴脚本（示例）
-```javascript
-// Replace SHEET_ID and SHEET_NAME accordingly
-const SHEET_ID = 'PUT_YOUR_SHEET_ID';
-const SHEET_NAME = 'Sheet1';
-const ALLOW_ORIGIN = '*'; // 可改为 'https://ktwu01.github.io' 或你的 Pages 域名
-
-function doPost(e) {
-  return handleRequest_(e);
-}
-
-function doGet(e) {
-  return json_({ ok: true, service: 'komomood', ts: new Date().toISOString() });
-}
-
-function handleRequest_(e) {
-  try {
-    // 为避免预检（OPTIONS），前端使用 application/x-www-form-urlencoded
-    var params = e && e.parameter ? e.parameter : {};
-    var date = String(params.date || '').slice(0, 10);
-    var koko = clamp_(params.kokoMood);
-    var momo = clamp_(params.momoMood);
-    var komo = clamp_(params.komoScore);
-    var note = String(params.note || '');
-    var pass = String(params.passphrase || '').trim();
-
-    // 简单校验：passphrase 固定 '0317' 或 MMDD 四位
-    var passOk = pass === '0317' || /^\d{4}$/.test(pass);
-    if (!date || !koko || !momo || !komo) return json_({ ok: false, error: 'invalid_payload' });
-    if (!passOk) return json_({ ok: false, error: 'invalid_passphrase' });
-
-    var ss = SHEET_ID ? SpreadsheetApp.openById(SHEET_ID) : SpreadsheetApp.getActive();
-    var sh = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
-    sh.appendRow([date, koko, momo, komo, note, pass, new Date()]);
-    return json_({ ok: true });
-  } catch (err) {
-    return json_({ ok: false, error: String(err) });
-  }
-}
-
-function clamp_(n) {
-  n = Number(n);
-  if (!isFinite(n)) return null;
-  return Math.max(1, Math.min(5, Math.trunc(n)));
-}
-
-function json_(obj) {
-  var out = ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-  out.setHeader('Access-Control-Allow-Origin', ALLOW_ORIGIN);
-  out.setHeader('Access-Control-Allow-Methods', 'POST, GET');
-  out.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  return out;
-}
-```
-
-3) 部署为 Web App
-- 菜单：部署 → 新部署 → 选择“网络应用程序”。
-- 说明：Execution as = Me（我），Who has access = Anyone。
-- 部署后复制 Web App URL（形如 `https://script.google.com/macros/s/.../exec`）。
- - 已部署（用户提供）：`https://script.google.com/macros/s/AKfycbw16RHR1LWne6DQXYLBWdSEMRLQLQcZWXfZy77GjktRcYabwIYUarMIHOprPg6U-XAImw/exec`（Version 3，2025-08-13 08:28）
-
-4) 前端集成（避免预检）
-- 使用 `application/x-www-form-urlencoded` 发送，避免 CORS 预检：
-```js
-// const webAppUrl = '你的 Web App URL';
-const params = new URLSearchParams({
-  date, kokoMood, momoMood, komoScore, note, passphrase
-});
-await fetch(webAppUrl, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-  body: params.toString(),
-});
-// 返回体为 JSON（GAS 端），前端可 .json() 解析并提示 ok/错误
-```
-
-5) 验证流程
-- 使用 curl 或 Postman 先测通：
-```bash
-curl -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'date=2025-01-15&kokoMood=4&momoMood=5&komoScore=4&note=test&passphrase=0317' \
-  'https://script.google.com/macros/s/XXXX/exec'
-```
-- 确认 Google Sheet 新增行；随后手动触发 Actions，查看 `data/entries.json` 更新；本地或 Pages 端刷新热力图验证。
-
-6) 安全与防滥用（基础）
-- 在脚本中将 `ALLOW_ORIGIN` 设为你的 Pages 域名。
-- 前端与 GAS 双端校验字段与分值范围；必要时增加速率限制或 Turnstile。
-- 如果后续需要密钥，可考虑在 GAS 校验自定义 token；当前场景下 passphrase 足够。
-
-## Google Form Setup Guide（Step-by-step）
-1) 创建表单（forms.google.com）
-- 新建空白表单，命名为：komomood Check-in
-- 添加问题（全部设为 Required/必填，除 note 外）：
-  - date：类型建议“Short answer/简答”，开启响应验证（正则）：^\\d{4}-\\d{2}-\\d{2}$，提示“YYYY-MM-DD”
-  - kokoMood：类型“Short answer/简答”，数字 1–5 验证（最小 1，最大 5）
-  - momoMood：同上（1–5）
-  - komoScore：同上（1–5）
-  - note：类型“Paragraph/段落”，可选，最大 140 字（描述里提示）
-- 说明：将 date 设为“简答”便于预填生成单一的 entry.<ID> 参数；若使用“日期”类型，Google 会拆成 entry.<ID>_year/_month/_day，前端需特别处理。
-
-2) 设置与分享
-- 在“设置”中关闭“收集邮箱”等限制；允许任何持有链接者提交
-- 右上角“发送”→ 复制“表单链接”（用户真实填写入口）
-
-3) 关联 Google Sheet
-- 顶部切到“回复”→ 连接到表格 → 创建新表格
-- 打开该表格，右上角“共享”→ 设为“Anyone with the link can view”
-
-4) 获取 CSV 导出直链（供 Actions 使用）
-- 访问该表格后，记录地址栏中的 SHEET_ID
-- 选中目标工作表（通常第一个，gid=0），形成：
-  - https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=0
-- 将该链接写入仓库 Secret：GF_CSV_URL
-
-5) 获取 Google Form 预填链接并提取映射
-- 表单编辑页 → 右上角三点 → 获取预填链接（Get pre-filled link）
-- 用示例值填一遍（date=2025-01-15；koko/momo/komo=1–5；note=测试）→ 点击“获取链接”→ 复制
-- 预填链接（实际）示例：
-  - https://docs.google.com/forms/d/e/1FAIpQLSf8XZ0Wp3NgCKBAbBY63KTC6wzyTnfa0sYZFYH7CQHZ1iffXA/viewform?usp=pp_url&entry.171852347=2025-08-13&entry.1537924001=5&entry.1625555189=2&entry.1362123046=5&entry.1162583406=0317
-- 记录：
-  - prefillBaseUrl：保留到 viewform?usp=pp_url，去掉所有 entry.* 参数
-  - fieldMap（已填入 app.js）：
-    - date → entry.171852347
-    - kokoMood → entry.1537924001
-    - momoMood → entry.1625555189
-    - komoScore → entry.1362123046
-    - note → entry.103218744
-  - optional.passphrase：entry.1162583406，值 0317（已在前端自动附加；Actions 侧也可用 GF_PASSPHRASE 过滤）
-- 若 date 使用“日期”类型，会出现 entry.<ID>_year/_month/_day 三个参数；可回到第 1 步改为“简答+正则”，或告知我 3 个参数名，我将调整 `app.js` 以适配。
-
-6) 可选：增加“暗号/passphrase”题
-- 类型：Short answer，提示输入固定值，例如“0317”，并设为必填
-- 在 GitHub Secrets 设置 GF_PASSPHRASE=0317，Actions 会过滤不匹配的行
-
-7) 成功标准
-- 提交一条真实表单 → 等待 Actions 手动/定时运行 → 仓库 `data/entries.json` 更新
-- 页面加载显示最新记录，tooltip 展示正确

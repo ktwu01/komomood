@@ -19,7 +19,12 @@ class KomomoodApp {
         this.tooltipLocked = false;
         this.activeCellKey = null; // date string for the active cell
 
-		// Google Form prefill config (configured from provided prefilled link)
+		// GAS Web App configuration for direct submission
+		this.gasConfig = {
+			webAppUrl: 'https://script.google.com/macros/s/AKfycby76rTs0Xq1U8IL8fYtEzbRMO5hmue0tYFOwKRWc-MAW3HLeesbobuXzbz3_XIqGRbdDw/exec'
+		};
+
+		// Google Form prefill config (fallback option)
 		// Note: 'note' is optional. 'passphrase' will be auto-included if configured.
 		this.googleFormConfig = {
 			prefillBaseUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSf8XZ0Wp3NgCKBAbBY63KTC6wzyTnfa0sYZFYH7CQHZ1iffXA/viewform?usp=pp_url',
@@ -364,35 +369,118 @@ class KomomoodApp {
         this.checkinModal.classList.add('hidden');
     }
 
-    submitCheckinForm() {
-        // Validate
+    async submitCheckinForm() {
+        // Get form values
         const date = this.checkinDate?.value?.trim();
         const kokoMood = this.clampScore(this.checkinKoko?.value);
         const momoMood = this.clampScore(this.checkinMomo?.value);
         const komoScore = this.clampScore(this.checkinKomo?.value);
         const note = (this.checkinNote?.value || '').trim();
+        const passphrase = document.getElementById('ci_passphrase')?.value?.trim();
 
+        // Validate
         const errorMessages = [];
         if (!date) errorMessages.push('请选择日期');
         if (!(kokoMood >= 1 && kokoMood <= 5)) errorMessages.push('Koko 心情需为 1-5');
         if (!(momoMood >= 1 && momoMood <= 5)) errorMessages.push('Momo 心情需为 1-5');
         if (!(komoScore >= 1 && komoScore <= 5)) errorMessages.push('关系分值需为 1-5');
+        
+        // Validate passphrase format (4 digits)
+        if (!passphrase || !/^\d{4}$/.test(passphrase)) {
+            errorMessages.push('通行码必须为四位数字格式（MMDD）');
+        }
 
-        // Config check
-        const { prefillBaseUrl, fieldMap } = this.googleFormConfig;
-        const missingConfig = !prefillBaseUrl || !fieldMap?.date || !fieldMap?.kokoMood || !fieldMap?.momoMood || !fieldMap?.komoScore || !fieldMap?.note;
+        if (errorMessages.length > 0) {
+            this.showCheckinError(errorMessages.join('；'));
+            return;
+        }
 
-        if (errorMessages.length > 0 || missingConfig) {
-            const msg = [
-                ...errorMessages,
-                ...(missingConfig ? ['表单预填配置未完成：请在 app.js 中设置 `googleFormConfig.prefillBaseUrl` 与各字段的 `entry.<ID>` 映射。'] : [])
-            ].join('；');
-            if (this.checkinError) {
-                this.checkinError.textContent = msg;
-                this.checkinError.classList.remove('hidden');
+        // Hide error and show loading state
+        this.hideCheckinError();
+        this.hideCheckinSuccess();
+        
+        // Disable submit button and show loading
+        const submitBtn = document.querySelector('#checkinForm button[type="submit"]');
+        const originalText = submitBtn?.textContent;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>提交中...';
+        }
+
+        try {
+            // First, try GAS Web App direct submission
+            const gasResult = await this.submitToGAS({
+                date, kokoMood, momoMood, komoScore, note, passphrase
+            });
+
+            if (gasResult.success) {
+                this.showCheckinSuccess('✅ 提交成功！数据将在下次同步后显示在热力图中');
+                setTimeout(() => {
+                    this.closeCheckinModal();
+                    // Optionally reload data
+                    this.loadData();
+                }, 2000);
+                return;
             } else {
-                alert(msg);
+                // GAS failed, fallback to Google Form
+                console.warn('GAS submission failed:', gasResult.error);
+                this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase });
             }
+        } catch (error) {
+            console.error('Error during submission:', error);
+            // Fallback to Google Form
+            this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase });
+        } finally {
+            // Restore submit button
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        }
+    }
+
+    async submitToGAS({ date, kokoMood, momoMood, komoScore, note, passphrase }) {
+        const { webAppUrl } = this.gasConfig;
+        
+        if (!webAppUrl) {
+            throw new Error('GAS Web App URL not configured');
+        }
+
+        const params = new URLSearchParams({
+            date,
+            kokoMood: String(kokoMood),
+            momoMood: String(momoMood), 
+            komoScore: String(komoScore),
+            note,
+            passphrase
+        });
+
+        const response = await fetch(webAppUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: params.toString()
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        return {
+            success: result.ok === true,
+            error: result.error || null
+        };
+    }
+
+    fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }) {
+        console.log('Falling back to Google Form...');
+        
+        const { prefillBaseUrl, fieldMap } = this.googleFormConfig;
+        
+        if (!prefillBaseUrl || !fieldMap) {
+            this.showCheckinError('❌ GAS 提交失败，且 Google Form 备用方案未配置');
             return;
         }
 
@@ -403,21 +491,56 @@ class KomomoodApp {
         params.set(fieldMap.momoMood, String(momoMood));
         params.set(fieldMap.komoScore, String(komoScore));
         if (note) params.set(fieldMap.note, note);
+        
+        // Add passphrase if configured
+        const pp = this.googleFormConfig.optional?.passphrase;
+        if (pp?.param) {
+            params.set(pp.param, passphrase);
+        }
+
         // Common param often present in prefill URLs
         if (!prefillBaseUrl.includes('usp=')) params.set('usp', 'pp_url');
-
-        // Optional passphrase support
-        const pp = this.googleFormConfig.optional?.passphrase;
-        if (pp?.param && pp?.value) {
-            params.set(pp.param, pp.value);
-        }
 
         const finalUrl = prefillBaseUrl.includes('?')
             ? `${prefillBaseUrl}&${params.toString()}`
             : `${prefillBaseUrl}?${params.toString()}`;
 
-        window.open(finalUrl, '_blank');
-        this.closeCheckinModal();
+        this.showCheckinSuccess('⚠️ 正在使用备用方案，即将跳转到 Google Form...');
+        
+        setTimeout(() => {
+            window.open(finalUrl, '_blank');
+            this.closeCheckinModal();
+        }, 1500);
+    }
+
+    showCheckinError(message) {
+        const errorDiv = this.checkinError;
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+    }
+
+    hideCheckinError() {
+        const errorDiv = this.checkinError;
+        if (errorDiv) {
+            errorDiv.classList.add('hidden');
+        }
+    }
+
+    showCheckinSuccess(message) {
+        const successDiv = document.getElementById('checkinSuccess');
+        if (successDiv) {
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+        }
+    }
+
+    hideCheckinSuccess() {
+        const successDiv = document.getElementById('checkinSuccess');
+        if (successDiv) {
+            successDiv.classList.add('hidden');
+        }
     }
 
     showError(message) {
