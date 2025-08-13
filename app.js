@@ -49,11 +49,13 @@ class KomomoodApp {
         const startDay = currentDate.getDay(); // 0 = Sunday
         currentDate.setDate(currentDate.getDate() - startDay);
         
-        // Generate 52 weeks * 7 days = 364 days
-        for (let week = 0; week < 52; week++) {
-            for (let day = 0; day < 7; day++) {
-                dates.push(new Date(currentDate));
-                currentDate.setDate(currentDate.getDate() + 1);
+        // Generate 52 weeks * 7 days = 364 days, but in column-major order
+        for (let day = 0; day < 7; day++) {
+            for (let week = 0; week < 52; week++) {
+                const dateIndex = week * 7 + day;
+                const date = new Date(currentDate);
+                date.setDate(date.getDate() + dateIndex);
+                dates[dateIndex] = date;
             }
         }
         
@@ -99,6 +101,29 @@ class KomomoodApp {
             
             this.heatmapGrid.appendChild(cell);
         });
+
+        this.renderMonthLabels(dates);
+    }
+
+    renderMonthLabels(dates) {
+        const monthLabelsContainer = document.getElementById('month-labels');
+        monthLabelsContainer.innerHTML = '';
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let lastMonth = -1;
+
+        for (let i = 0; i < 52; i++) {
+            const date = dates[i * 7];
+            const month = date.getMonth();
+            if (month !== lastMonth) {
+                const monthLabel = document.createElement('span');
+                monthLabel.textContent = monthNames[month];
+                monthLabel.className = 'absolute';
+                // Approximate position based on week number
+                monthLabel.style.left = `${(i * 100 / 52)}%`;
+                monthLabelsContainer.appendChild(monthLabel);
+            }
+            lastMonth = month;
+        }
     }
 
     showTooltip(event, date, entry) {
@@ -213,7 +238,7 @@ class KomomoodApp {
         checkinBtn.addEventListener('click', () => {
             // For now, link to the data file for manual editing
             // Later this will be replaced with Google Forms integration
-            window.open('https://github.com/your-username/komomood/edit/main/data/entries.json', '_blank');
+            window.open('https://github.com/ktwu01/komomood/edit/main/data/entries.json', '_blank');
         });
     }
 

@@ -63,8 +63,8 @@
   - 渐变 legend（5 级，蓝→粉），标注 1–5 等级。
   - GitHub 风格热力图（显示最近 12 个月），单元格颜色由 `komoScore`（或合成分）驱动。
   - Hover/点击单元格弹出当天详情（koko、momo、komo 分值与备注）。
-  - 顶部右上角提供“去打卡”按钮：
-    - v1 简单：跳转到 GitHub 仓库 `data/entries.json` 进行编辑（或打开“新建 Issue”预填链接）。
+  - 顶部右上角提供“去打卡”入口：
+    - v1.1 更新：点击按钮在站内弹出表单卡片（modal/card），填写 `date/kokoMood/momoMood/komoScore/note`，提交时构造 Google Form 预填链接并跳转到 Google Form 仅做最终确认与提交。
 - 数据源：`data/entries.json`（手工维护，或后续接入 Actions 自动生成）。
 
 ## Data Schema (JSON)
@@ -139,30 +139,75 @@
 - Cloudflare Access：如需私密访问。
 
 ## Project Status Board
-- [ ] 1 仓库创建与 Pages 启用
-- [ ] 2 提交基础骨架（index.html / app.js / data/entries.json 示例）
-- [ ] 3 实现 5 级颜色 legend（蓝→粉）
-- [ ] 4 热力图布局与颜色映射
-- [ ] 5 交互详情（tooltip/弹层）
-- [ ] 6 打卡入口与 README 说明
+- [x] 1 仓库创建与 Pages 启用
+- [x] 2 提交基础骨架（`index.html` / `app.js` / `data/entries.json` 示例）
+- [ ] 3 (UI Fix) 修正热力图布局与对齐
+- [ ] 4 (UI Fix) 修正 Legend 与标签对齐
+- [ ] 5 实现交互详情（tooltip/弹层）
+- [ ] 6 “打卡入口”改为站内表单卡片（modal）→ 构造 Google Form 预填链接
 - [ ] 7 Pages 部署验证
-- [ ] 8（可选）Issues 预填 + Actions 聚合
-- [ ] 9（可选）Cloudflare Access 保护
+
+## UI/UX Fixes and Refinements (v1.1)
+- **Heatmap Grid Orientation**: 热力图应为**竖向**排列（从上到下，再从左到右），以符合 GitHub 风格。当前为横向。
+  - **Fix**: 在 `heatmap-grid` 的 CSS 中，添加 `grid-auto-flow: column;`。
+- **Label Alignment**:
+  - **Legend Alignment**: `Less/More` 标签、`0-5` 数字和色块需精确对齐。
+  - **Day Label Alignment**: `Sun-Sat` 星期标签需与热力图的行精确对齐。
+  - **Month Label Alignment**: `Jan-Dec` 月份标签需与热力图的列大致对齐。
+  - **Fix**: 使用更精细的 Flexbox 或 Grid 布局来控制标签位置，而不是依赖于简单的 `space-x` 或 `justify-between`。
+
+## On-page Check-in Modal Spec
+- **触发**: 点击顶部“去打卡”按钮后，打开居中弹层（Card/Modal）。
+- **字段**:
+  - date (YYYY-MM-DD, 必填，默认今天)
+  - kokoMood (1–5, 必填，步进 1)
+  - momoMood (1–5, 必填，步进 1)
+  - komoScore (1–5, 必填，步进 1)
+  - note (可选，最多 140 字)
+- **校验**: 必填项非空，分值范围 1–5，日期格式校验。
+- **提交行为**: 不直接本地写 JSON；使用 Google Form 预填链接（prefill）方式：
+  - 通过 Form 的 live URL/预填链接中 `entry.<ID>` 映射，将表单值拼接生成 URL
+  - 跳转到 Google Form（含预填值）→ 用户确认提交
+- **UI/交互**:
+  - Modal 支持 Esc/遮罩点击关闭
+  - 移动端全宽卡片；桌面端圆角卡片，淡入淡出动画
+  - 成功提交后，回到页面可提示“稍后将同步到可视化（由工作流更新）”
+- **依赖**:
+  - 需要提供 Google Form live URL（非编辑链接）或“获取预填链接”的样例 URL 以提取各字段的 `entry.<ID>` 映射
+
+### Google Form 预填映射说明
+- 打开 Google Form → 右上角三点 → 获取预填链接（Get pre-filled link）
+- 随便填入样例值 → 生成预填链接 → 复制该链接
+- 在链接参数中找出每个问题对应的 `entry.<数字>`，记录为：
+  - date → entry.X1
+  - kokoMood → entry.X2
+  - momoMood → entry.X3
+  - komoScore → entry.X4
+  - note → entry.X5
+- 执行器将把页面表单值映射到上述参数并跳转
 
 ## Current Status / Progress Tracking
 - 规划阶段完成：确认 v1 使用静态 JSON；设计数据 schema、色阶、布局与任务拆分。
+- **Executor 已完成基础骨架提交。**
+- **Planner 根据用户反馈，新增了 UI/UX 修正任务。**
+- **Planner 新增站内打卡表单（Modal）方案及实施步骤。**
 
 ## Executor's Feedback or Assistance Requests
 - 如需私密访问，请确认是否采用 Cloudflare Access（需要域名与 DNS 变更）。
+NO
+
 - 如需网页表单直填，建议 v1.1 采用 Issues + Actions；是否需要我先行搭好 Actions（使用默认 GITHUB_TOKEN 权限）？
+YES. what should i do?
+
+- 请提供：
+  1) Google Form live URL（可填写的公开链接）
+  2) 一条“获取预填链接”生成的样例 URL（含参数），便于提取 `entry.<ID>` 对应关系
+  3) 是否需要在 Form 中增加“暗号”字段（默认值：0317）以便过滤
 
 ## Lessons
 - GitHub Pages 仅静态；数据可放仓库 JSON 或来自 Issues，经 Actions 聚合。
 - 遵循：Read the file before edit；未经许可不进行 git push。
-
-## FAQ（关键问题回答）
-- 问：这样的系统可以在 GitHub Pages 上存在吗？
-  - 答：可以，但不能用服务器端数据库。v1 用静态 JSON；若要网页输入，可用 GitHub Issues + Actions 自动聚合；或采用第三方后端（增加复杂度）。
+- **教训**: CSS 布局中的对齐问题，不能仅靠 `space-between` 或 `justify-center`，需要更精确的容器和尺寸计算来保证对齐。热力图的渲染方向需要特别注意 `grid-auto-flow` 属性。
 
 ## Hosting & Data Input Options
 - 目标：公开访问 + 简单打卡输入 + 可长期稳定
@@ -225,14 +270,15 @@
 - 热力图正常展示最新 12 个月数据，颜色映射与详情正确。
 
 ### Project Status Board（补充小任务）
-- [ ] 创建 Google Form（含 date/koko/momo/komo/note 字段）并绑定 Sheet
-- [ ] 开启 Sheet 公共只读，拿到 CSV 导出链接并保存为仓库 Secret：`GF_CSV_URL`
+- [x] 创建 Google Form（含 date/koko/momo/komo/note 字段）并绑定 Sheet
+- [x] 开启 Sheet 公共只读，拿到 CSV 导出链接并保存为仓库 Secret：`GF_CSV_URL`
 - [ ] 新增 `.github/workflows/sync-form.yml`（手动 + 定时触发）
 - [ ] 新增 `.github/scripts/csv_to_entries.(js|py)` 转换脚本
-- [ ] 在页面加“去打卡”按钮（指向 Google Form）
+- [ ] 在页面加“去打卡”站内表单（modal），并在提交时跳转到 Google Form 预填链接
 - [ ] 首次工作流运行成功，仓库内 `data/entries.json` 更新
 
 ## Executor's Feedback or Assistance Requests（更新）
+- **User has provided Google Sheet URL.** Next step is to set the public CSV link as a repository secret named `GF_CSV_URL`.
 - 请确认是否添加“暗号”问题到表单（如果需要，我将按 `GF_PASSPHRASE` 过滤）。
   暗号：0317。
 
@@ -241,3 +287,6 @@
 
 - 确认日历展示范围：默认近 365 天；是否需要固定某年或更长跨度？
   OK：默认近 365 天。
+
+## Architecture Decision（更新）
+- 数据输入采用“站内表单体验 + Google Form 预填确认”的混合方案：前端仅做 UI 与参数构造，不直接写入仓库；后端仍通过 Google Sheet → GitHub Actions 聚合生成静态 JSON，保持静态站点的稳定性与可维护性。

@@ -75,7 +75,7 @@ php -S localhost:8000
 
 项目托管在 GitHub Pages 上，任何推送到 `main` 分支的更改都会自动部署。
 
-访问地址：`https://your-username.github.io/komomood/`
+访问地址：`https://ktwu01.github.io/komomood/`
 
 ## 🔮 未来计划
 
