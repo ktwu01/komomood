@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>komomood – 可爱优雅粉色系「心情日记」</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Custom gradient colors for mood levels */
+        .level-0 { background-color: #E5E7EB; }
+        .level-1 { background-color: #3B82F6; }
+        .level-2 { background-color: #60A5FA; }
+        .level-3 { background-color: #A78BFA; }
+        .level-4 { background-color: #F472B6; }
+        .level-5 { background-color: #EC4899; }
+        
+        /* Heatmap grid styling */
+        .heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(52, 1fr);
+            grid-template-rows: repeat(7, 1fr);
+            gap: 2px;
+            max-width: 100%;
+            overflow-x: auto;
+        }
+        
+        .heatmap-cell {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .heatmap-cell:hover {
+            transform: scale(1.2);
+            z-index: 10;
+            position: relative;
+        }
+        
+        @media (max-width: 768px) {
+            .heatmap-cell {
+                width: 8px;
+                height: 8px;
+            }
+        }
+        
+        /* Tooltip styling */
+        .tooltip {
+            position: absolute;
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            z-index: 20;
+            min-width: 200px;
+            pointer-events: none;
+        }
+        
+        /* Pink gradient background */
+        body {
+            background: linear-gradient(135deg, #FDF2F8 0%, #FCE7F3 50%, #FAE8FF 100%);
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body class="font-sans">
+    <!-- Header -->
+    <header class="text-center py-8 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-heart text-pink-500 mr-2"></i>
+                komomood
+            </h1>
+            <p class="text-gray-600 text-lg">可爱优雅粉色系「心情日记」</p>
+            <p class="text-gray-500 mt-2">记录 koko 和 momo 的每日心情与关系分值</p>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto px-4 pb-8">
+        <!-- Action Button -->
+        <div class="text-center mb-8">
+            <button id="checkinBtn" class="bg-pink-500 hover:bg-pink-600 text-white px-6 py-3 rounded-full font-medium transition-all duration-200 hover:scale-105 shadow-lg">
+                <i class="fas fa-plus mr-2"></i>
+                去打卡
+            </button>
+        </div>
+
+        <!-- Legend -->
+        <div class="bg-white rounded-lg shadow-sm p-6 mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">
+                <i class="fas fa-palette text-pink-500 mr-2"></i>
+                心情色阶
+            </h2>
+            <div class="flex items-center justify-center space-x-4 flex-wrap">
+                <span class="text-sm text-gray-600">Less</span>
+                <div class="flex space-x-1">
+                    <div class="level-0 w-4 h-4 rounded-sm"></div>
+                    <div class="level-1 w-4 h-4 rounded-sm"></div>
+                    <div class="level-2 w-4 h-4 rounded-sm"></div>
+                    <div class="level-3 w-4 h-4 rounded-sm"></div>
+                    <div class="level-4 w-4 h-4 rounded-sm"></div>
+                    <div class="level-5 w-4 h-4 rounded-sm"></div>
+                </div>
+                <span class="text-sm text-gray-600">More</span>
+            </div>
+            <div class="flex justify-center mt-2 space-x-8 text-xs text-gray-500">
+                <span>0</span>
+                <span>1</span>
+                <span>2</span>
+                <span>3</span>
+                <span>4</span>
+                <span>5</span>
+            </div>
+        </div>
+
+        <!-- Heatmap Container -->
+        <div class="bg-white rounded-lg shadow-sm p-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">
+                <i class="fas fa-calendar text-pink-500 mr-2"></i>
+                最近一年的心情记录
+            </h2>
+            
+            <!-- Week labels -->
+            <div class="flex justify-between text-xs text-gray-500 mb-2 pl-8">
+                <span>Jan</span>
+                <span>Feb</span>
+                <span>Mar</span>
+                <span>Apr</span>
+                <span>May</span>
+                <span>Jun</span>
+                <span>Jul</span>
+                <span>Aug</span>
+                <span>Sep</span>
+                <span>Oct</span>
+                <span>Nov</span>
+                <span>Dec</span>
+            </div>
+            
+            <!-- Heatmap with day labels -->
+            <div class="flex">
+                <!-- Day labels -->
+                <div class="flex flex-col justify-between text-xs text-gray-500 mr-2 py-1">
+                    <span>Sun</span>
+                    <span></span>
+                    <span>Mon</span>
+                    <span></span>
+                    <span>Tue</span>
+                    <span></span>
+                    <span>Wed</span>
+                    <span></span>
+                    <span>Thu</span>
+                    <span></span>
+                    <span>Fri</span>
+                    <span></span>
+                    <span>Sat</span>
+                </div>
+                
+                <!-- Heatmap grid -->
+                <div id="heatmapGrid" class="heatmap-grid"></div>
+            </div>
+        </div>
+
+        <!-- Stats Section -->
+        <div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-white rounded-lg shadow-sm p-6 text-center">
+                <div class="text-2xl font-bold text-pink-500" id="totalDays">0</div>
+                <div class="text-gray-600">总打卡天数</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-6 text-center">
+                <div class="text-2xl font-bold text-purple-500" id="avgKomoScore">0</div>
+                <div class="text-gray-600">平均关系分值</div>
+            </div>
+            <div class="bg-white rounded-lg shadow-sm p-6 text-center">
+                <div class="text-2xl font-bold text-blue-500" id="currentStreak">0</div>
+                <div class="text-gray-600">连续打卡天数</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Tooltip -->
+    <div id="tooltip" class="tooltip" style="display: none;"></div>
+
+    <!-- Loading indicator -->
+    <div id="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 text-center">
+            <i class="fas fa-spinner fa-spin text-pink-500 text-2xl mb-2"></i>
+            <p class="text-gray-600">加载心情数据中...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
