@@ -212,7 +212,7 @@
     6) 将新生成的空库加入 Git：`git add -f backend/mood_entries.db`。
   - 成功标准：库文件体积较小，API 返回空数组，提交包含空库。
 
-- [ ] 任务 5.3: 前端扩展热力图 +14 天（仅前端改动）
+- [x] 任务 5.3: 前端扩展热力图 +14 天（仅前端改动）
   - 设计：参数化“周数/额外天数”。例如：`const extraDays = 14; const extraWeeks = Math.ceil(extraDays/7); const numWeeks = 52 + extraWeeks;`
   - 变更点：
     - `app.js`
@@ -229,6 +229,31 @@
   - 新增 SQL dump：`sqlite3 backend/mood_entries.db .dump > seed/komomood.dump.sql` 并纳入仓库，便于未来服务器用 `sqlite3 ... < dump.sql` 还原。
   - 或采用 Git LFS 管理 `backend/mood_entries.db`，减少仓库体积压力。
   - 成功标准：新环境既可直接用随仓库的 `.db` 启动，也可选择用 dump 构建。
+
+#### 决策点（需您确认）
+
+- 是否将 `backend/mood_entries.db` 纳入 Git 跟踪（按 5.1 默认执行），或仅提交 `seed/komomood.dump.sql`（文本）以减小仓库体积。
+- 何时执行“刷新数据库为空库”（5.2），预计停写窗口 1–2 分钟。
+- 是否同时启用 5.4（生成 SQL dump，或为 `.db` 启用 Git LFS）。
+
+#### Planner 执行清单与验收（Phase 5）
+
+- 数据库刷新与纳管（5.1 + 5.2）
+  - 步骤：停止后端 → 备份 `.db`（UTC 时间戳命名）→ 删除 → 重启自动建表 → 验证 API 返回 `[]` → 将新 `.db` 暂存到 Git。
+  - 验收：
+    - `curl -sS https://us-south.20011112.xyz/komomood/api/entries` 返回 `[]`。
+    - 前端控制台出现“成功通过 /komomood/api 加载 0 条心情记录”。
+    - `git status` 显示 `backend/mood_entries.db` 待提交（或 dump 文件待提交）。
+
+- 前端 +14 天（5.3）
+  - 状态：已实现与验收；右侧新增两列，悬浮未来日期提示“暂无打卡记录”。
+
+#### Phase 5 快照状态板
+
+- [x] 5.1 `.gitignore` 白名单，允许跟踪 `backend/mood_entries.db`
+- [x] 5.2 刷新数据库为空库并验证
+- [x] 5.3 前端热力图 +14 天（已上线）
+- [ ] 5.4 可选：SQL dump 与/或 Git LFS
 
 #### 规划内参考
 - `.gitignore` 例外白名单：使用否定匹配 `!path/to/file` 可以在通配忽略后重新纳入跟踪。
@@ -345,7 +370,7 @@
 - 先完成“V1–V4”验证，若确认线上未部署新版 `app.js` 或存在缓存/报错，优先修复部署与缓存；随后再导入 Cal-Heatmap 以替换。
 - 在 Cal-Heatmap 资源就绪前，页面会继续采用“回退到旧网格”的逻辑，不影响使用。
 
-### 第七阶段：Bug 修复（“连续打卡天数”计算不正确）
+### 第七阶段：Bug 修复（“连续打卡天数”计算不正确）Fixed, no need to fix
 
 - 症状：统计区“连续打卡天数”显示不准确。
 - 初步研判根因：
@@ -389,6 +414,48 @@
 - 剩余事项：
   - 4.2 作为部署约定已定稿（无需代码变更）。
   - 4.3 文档更新需执行者完成并提交审阅。
+
+### 第八阶段：新功能规划（先稳定运行，暂不引入 Cal‑Heatmap 渲染）
+
+- 背景与动机：
+  - A) 新增“前一年度”的对比视图，未来采用 Cal‑Heatmap 渲染，便于对比去年与今年的心情分布（GitHub 风格）。
+  - B) 在统计区新增一行“自 2024‑03‑17 起已过去 N 天”（中文展示），用于纪念在一起的天数。
+  - 原则：当前不引入 Cal‑Heatmap（保持现状网格渲染），先保证线上稳定；Cal‑Heatmap 待后续资源就绪再切换。
+
+- 高层成功标准：
+  - 前端页面持续稳定，无新增报错；现有热力图与提交功能不受影响。
+  - 新增“纪念日天数”统计准确（使用 UTC 基准计算，避免时区偏差）。
+  - 为“前一年视图”的接入准备好参数与容器占位（不影响现有布局），后续启用 Cal‑Heatmap 时零/低侵入切换。
+
+- 任务拆分（Planner）：
+  - [ ] 8.1 确定“前一年视图”范围与数据接口
+    - 说明：定义 second view 的时间范围为“当前今日往前 52 周（含 +14 天扩展）对应的一整年块的前一年度”；或简化为严格上一公历年（Jan 1 – Dec 31）。
+    - 决策建议：采用“上一公历年”以便用户直观对比全年。
+    - 成功标准：文档化范围定义；无需后端改动（沿用现有 `/api/entries` 全量获取，前端本地过滤上一年数据）。
+  - [ ] 8.2 预留挂载容器与样式（不渲染 Cal‑Heatmap）
+    - 在 `index.html` 预留一个次级热图容器，如 `#heatmapGridPrevYear` 与对应的月份标签容器；
+    - 使用与现有网格一致的“回退渲染”函数扩展出上一年网格渲染（临时复用 legacy 方案），待 Cal‑Heatmap 引入后切换为库渲染；
+    - 成功标准：页面存在容器但默认可隐藏或折叠，不影响现有首屏布局。
+  - [ ] 8.3 纪念日天数（Memodays）展示（立即可做）
+    - 公式：`N = floor((todayUTC - baseUTC) / 86400000)`，其中 `baseUTC = Date.UTC(2024, 2, 17)`；
+    - 展示文案（中文）：`自 2024-03-17 起，我们已经在一起 N 天`；
+    - 成功标准：跨浏览器显示一致，刷新后与实际日期匹配；无时区 off‑by‑one。
+  - [ ] 8.4 Cal‑Heatmap 接入设计（仅规划，不执行）
+    - 两个实例：
+      - 今年视图：`range = 54`，`domain: 'week'`, `subDomain: 'day'`，`date.start` 对齐周起点（含 +14 天）。
+      - 上一年视图：`range = 54`，`date.start` 设为“今年视图 start 向前 54 周”；或采用 `domain: 'month'` + `range: 12`（若更贴近公历年对齐）。
+    - 数据：保持 `{date: Date, value: number}` 或 `{timestamp, value}`；缺失为 0/无数据色；颜色阈值复用现有。
+    - 依赖：本地化 `d3` 运行时并在 `index.html` 先于 Cal‑Heatmap 引入，避免 `timeSecond` 报错；全部资产置于 `assets/vendor/` 路径。
+
+- 执行注意：
+  - 现阶段仅实现 8.3（纪念日天数），其余为容器与样式准备；Cal‑Heatmap 引入需后续再做。
+  - 不引入外部 CDN；遵循本项目本地资产与稳定优先原则。
+
+- 状态看板（Phase 8）
+  - [ ] 8.1 前一年视图范围定义（上一公历年 vs 回溯 54 周）
+  - [ ] 8.2 预留容器与 legacy 渲染路径（默认隐藏）
+  - [ ] 8.3 纪念日天数（UTC 计算 + 中文文案）
+  - [ ] 8.4 Cal‑Heatmap 接入设计（仅文档）
 
 ## 参考资料（规划依据）
 - Tailwind CSS 生产安装与构建：[Tailwind Installation](https://tailwindcss.com/docs/installation)
@@ -460,6 +527,33 @@
 ### 执行者的请求
 - 请在 `https://us-south.20011112.xyz/komomood/` 验证右侧是否新增两列（+14 天）。悬浮应显示“暂无打卡记录”。如确认通过，我将继续执行第 6 阶段的资源引入与全面切换。
 - 数据库相关（5.1/5.2）：待您允许后我再执行（涉及停/启后端与 Git 变更）。
+
+### Phase 5 执行日志（UTC）
+- 2025-08-14T20:00:28Z
+  - 5.1 检查：`.gitignore` 已包含 `!backend/mood_entries.db`，`git check-ignore` 显示未被忽略。
+  - 5.2 操作：
+    - 停止后端：`pm2 stop komomood-backend` → 成功。
+    - 备份数据库：`backend/mood_entries.backup.20250814T200028Z.db` 已创建。
+    - 删除旧库：`backend/mood_entries.db` 已删除。
+    - 重启后端：`pm2 restart komomood-backend && pm2 save` → 成功，进程在线。
+    - 验证 API：`/komomood/api/entries` 返回 `[]`。
+    - 新库检查：`backend/mood_entries.db` 已重建（约 16K）。
+    - Git 暂存：已执行 `git add -f backend/mood_entries.db`（未提交）。
+ - 2025-08-14T20:42:00Z
+   - 排障：磁盘 100% 导致 `SQLITE_FULL` → 清理系统日志释放空间至 ~467MB；后端停止导致 Nginx 502 → 通过 pm2 启动恢复；健康检查 200。
+   - 前端：Cal‑Heatmap 缺失 d3 导致 `timeSecond` 报错 → 暂移除 `index.html` 的 Cal‑Heatmap `<script>`，回退至内置网格；部署到 `/var/www/komomood/`；用户手测“正常工作”。
+   - 测试结果：
+     - 健康：`/komomood/api/health` → 200 + ok。
+     - GET：返回数组（已含今日与历史记录）。
+     - POST：初次 201，重复 409；脚本与浏览器端均通过。
+     - 端口：`ss` 显示 3002 由 pm2 托管的 node 进程监听。
+
+### 执行者需要您确认 / 协助（Phase 5）
+- 是否批准执行一次提交并推送以下文件？（不会包含敏感内容以外的变更）
+  - `backend/mood_entries.db`（空库，用于迁移便利）
+  - `.cursor/scratchpad.md`（状态更新与执行日志）
+- 是否继续执行 5.4（可选）：
+  - 生成并纳管 `seed/komomood.dump.sql`；或为 `.db` 启用 Git LFS。
 
 ## 5. 经验教训
 
