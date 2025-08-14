@@ -65,13 +65,13 @@
   - **目标**: 修改前端 JavaScript (`app.js`)，使其通过新后端 API 存取数据。
   - **完成标准**: 页面能正确展示数据库中的所有记录，并能成功提交新记录。
 
-- [ ] **任务 2.2: 配置 Web 服务器 (Nginx)**
+- [✅] **任务 2.2: 配置 Web 服务器 (Nginx)**
   - **目标**: 配置 Nginx 实现应用的访问路由。
-  - **当前状态**: ⚠️ **部分完成但被阻止** - 后端 `/api/` 反向代理已配置且工作正常，但前端文件服务因权限问题被阻止。
+  - **当前状态**: ✅ 已完成 - 静态资源已从 `/var/www/komomood/` 提供；新增 `/komomood/api/` 反代至 `http://localhost:3002/api/;`；外部访问健康检查 200。
   - **配置要点**:
-    - `location /komomood/`: 指向前端静态文件目录。(**被阻止**)
-    - `location /api/`: 反向代理到后端 Node.js 服务的地址（`http://localhost:3001`）。(**完成**)
-  - **完成标准**: 通过 `https://us-south.20011112.xyz/komomood/` 能成功访问应用，且所有功能正常。
+    - `location /komomood/`: 指向 `/var/www/komomood/`，`index index.html;`，`try_files $uri $uri/ =404;`。
+    - `location /komomood/api/`: 反向代理到后端 Node.js 服务（`http://localhost:3002/api/;`）。
+  - **完成标准**: 通过 `https://us-south.20011112.xyz/komomood/` 能成功访问应用，且 `https://us-south.20011112.xyz/komomood/api/health` 返回 200。
 
 - [ ] **任务 2.3: 配置后端服务持久化**
   - **目标**: 确保后端服务能在服务器重启后自动运行。
@@ -86,6 +86,9 @@
 - ✅ **Nginx 配置完成**: 已成功配置反向代理，将 `https://us-south.20011112.xyz/api/` 的请求转发至后端服务。
 - ✅ **远程访问验证通过**: 已从外部网络成功访问 `/api/health` 端点，确认端到端连接正常。
 - ✅ **任务 1.4 已完成（代码层面）**: 端口切换至 `3002`，并修复了可能导致进程挂起的 `stdin` 问题。
+- ✅ **静态资源迁移**: 已将前端静态文件迁移至 `/var/www/komomood/` 并设置 `www-data` 可读，`https://us-south.20011112.xyz/komomood/` 返回 200。
+- ✅ **Nginx 路由更新**: 已将 `location /komomood/` 的 `alias` 更新为 `/var/www/komomood/`，并新增 `location /komomood/api/` 反代至 `http://localhost:3002/api/;`；配置测试 `nginx -t` 通过并已 reload。
+- ✅ **API 健康检查通过**: 后端重启后，本地与外部 `.../komomood/api/health` 均返回 `{status:'ok'}`（当前 PID 已更新）。
 
 ### 待解决问题
 - **关键问题: Nginx 权限不足**
@@ -95,12 +98,17 @@
     1. **推荐**: 将前端静态文件（整个 `komomood` 项目或仅前端部分）移动到标准的 Web 根目录，如 `/var/www/komomood`。
     2. **不推荐**: 强行修改 `/root` 目录的权限，这会带来严重的安全风险。
   - **决策**: 采用推荐方案，将项目部署到 `/var/www/` 目录下。
+- **状态**: 已解决（静态资源已迁移至 `/var/www/komomood` 并验证 200）。
 - **配置不一致: Nginx 仍反代到 3001**
   - **现状**: `/etc/nginx/sites-available/clipboard` 中 `location /api/` 仍为 `proxy_pass http://localhost:3001/api/;`。
   - **需要**: 更新为 `http://localhost:3002/api/;`。
+- **状态**: 已解决（为避免与 `clip` 冲突，新增独立前缀 `/komomood/api/` → `3002`）。
 - **静态目录指向受限路径**
   - **现状**: `location /komomood/ { alias /root/komomood/; }`。
   - **需要**: 指向 `/var/www/komomood/` 并确保 `www-data` 可读。
+- **状态**: 已解决（`alias /var/www/komomood/;` 已生效）。
+\- **新问题: `/komomood/api/health` 返回 504**
+  - **状态**: 已解决（重启后端进程后恢复，外部与本地健康检查 200）。
 
 ### 下一步执行计划
 **执行任务 2.2 (修正): 配置 Web 服务器 (Nginx) 并解决权限问题**
@@ -115,6 +123,9 @@
      - 将 `location /api/` 的 `proxy_pass` 更新为 `http://localhost:3002/api/;`。
   5. `sudo nginx -t && sudo systemctl reload nginx`，验证 `https://us-south.20011112.xyz/komomood/`。
   6. 使用进程管理（后续任务 2.3）守护后端服务。
+
+【追加】
+7. 已完成：重启后端进程，`/komomood/api/health` 外部与本地均返回 200，API 可用。
 
 ## 5. 经验教训
 
@@ -147,6 +158,10 @@
 ### 问题 5: 端口冲突
 **关键教训**: 在部署新应用时，必须检查服务器上已有的服务，确保新应用使用的端口没有被占用。本次部署中，`komomood` 应用尝试使用的端口 `3001` 与现有应用 `@https://us-south.20011112.xyz/clip/` 的后端服务冲突，导致 `EADDRINUSE` 错误和一系列的启动问题。
 **解决方案**: 为 `komomood` 后端服务选择一个明确未被占用的新端口（例如 `3002`），并在 Nginx 反向代理配置中同步更新。
+
+### 问题 6: 端口监听但无响应（假死）
+**现象**: 进程监听 `3002`，但健康检查超时（504/本地超时）。
+**解决方案**: 重启后端进程恢复。后续建议使用进程管理工具（如 `pm2`）以实现守护与自动重启。
 
 ## 6. 安全进程审计与清理计划（仅规划，不执行）
 
