@@ -58,16 +58,36 @@ class KomomoodApp {
 
     async loadData() {
         try {
-            const response = await fetch('data/entries.json');
+            const response = await fetch('/komomood/api/entries', { headers: { 'Accept': 'application/json' } });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
-            this.entries = await response.json();
-            console.log(`成功加载 ${this.entries.length} 条心情记录`);
+            const raw = await response.json();
+            // Normalize backend schema → frontend schema
+            this.entries = (Array.isArray(raw) ? raw : []).map(row => ({
+                date: row.entry_date || row.date,
+                kokoMood: Number(row.koko_mood ?? row.kokoMood ?? 0),
+                momoMood: Number(row.momo_mood ?? row.momoMood ?? 0),
+                komoScore: Number(row.komo_score ?? row.komoScore ?? 0),
+                note: row.note || ''
+            }));
+            console.log(`成功通过 /komomood/api 加载 ${this.entries.length} 条心情记录`);
         } catch (error) {
-            console.error('加载数据失败:', error);
-            // Fallback to empty array for development
-            this.entries = [];
+            console.error('加载数据失败（API）:', error);
+            // Fallback: try local static JSON for resilience in dev/transition
+            try {
+                const fallbackResp = await fetch('data/entries.json');
+                if (fallbackResp.ok) {
+                    const raw = await fallbackResp.json();
+                    this.entries = (Array.isArray(raw) ? raw : []);
+                    console.warn(`已使用本地 JSON 作为后备，记录数：${this.entries.length}`);
+                } else {
+                    this.entries = [];
+                }
+            } catch (_) {
+                // Final fallback to empty
+                this.entries = [];
+            }
         }
     }
 
