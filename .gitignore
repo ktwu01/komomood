@@ -16,6 +16,9 @@ yarn-error.log*
 *.sqlite
 *.sqlite3
 
+# Allow tracking the project database for migration purposes
+!backend/mood_entries.db
+
 # Logs
 logs
 *.log

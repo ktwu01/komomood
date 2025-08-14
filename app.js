@@ -5,6 +5,11 @@ class KomomoodApp {
         this.tooltip = document.getElementById('tooltip');
         this.loading = document.getElementById('loading');
         this.heatmapGrid = document.getElementById('heatmapGrid');
+        // Heatmap range config
+        this.extraDays = 14; // show +14 days on the right
+        this.numExtraWeeks = Math.ceil(this.extraDays / 7);
+        this.baseWeeks = 52; // legacy base range
+        this.numWeeks = this.baseWeeks + this.numExtraWeeks; // total weeks to render
         // Check-in modal elements
         this.checkinModal = document.getElementById('checkinModal');
         this.checkinForm = document.getElementById('checkinForm');
@@ -106,9 +111,9 @@ class KomomoodApp {
         const startDay = currentDate.getDay(); // 0 = Sunday
         currentDate.setDate(currentDate.getDate() - startDay);
         
-        // Generate 52 weeks * 7 days = 364 days, but in column-major order
+        // Generate numWeeks * 7 days in column-major order
         for (let day = 0; day < 7; day++) {
-            for (let week = 0; week < 52; week++) {
+            for (let week = 0; week < this.numWeeks; week++) {
                 const dateIndex = week * 7 + day;
                 const date = new Date(currentDate);
                 date.setDate(date.getDate() + dateIndex);
@@ -137,8 +142,27 @@ class KomomoodApp {
     }
 
     renderHeatmap() {
+        // If Cal-Heatmap is available, prefer it; otherwise fall back to legacy grid
+        if (typeof window !== 'undefined' && window.CalHeatmap) {
+            try {
+                this.renderWithCalHeatmap();
+                return;
+            } catch (e) {
+                console.warn('Cal-Heatmap 渲染失败，回退至内置网格:', e);
+            }
+        }
+        this.renderHeatmapLegacy();
+    }
+
+    renderHeatmapLegacy() {
         const dates = this.generateDateGrid();
         this.heatmapGrid.innerHTML = '';
+        // Ensure grid columns match weeks
+        if (this.heatmapGrid && this.heatmapGrid.style) {
+            this.heatmapGrid.style.gridTemplateColumns = `repeat(${this.numWeeks}, 1fr)`;
+        }
+        // Make sure legacy CSS class is present for grid layout
+        this.heatmapGrid.classList.add('heatmap-grid');
         
         dates.forEach(date => {
             const cell = document.createElement('div');
@@ -170,13 +194,62 @@ class KomomoodApp {
         this.renderMonthLabels(dates);
     }
 
+    renderWithCalHeatmap() {
+        // Remove legacy grid class to avoid CSS conflict
+        this.heatmapGrid.classList.remove('heatmap-grid');
+        this.heatmapGrid.innerHTML = '';
+
+        // Compute start date aligned to week start, covering baseWeeks + extra weeks
+        const today = new Date();
+        const start = new Date(today);
+        start.setDate(today.getDate() - (this.baseWeeks * 7));
+        // Align to week start (Sunday: 0)
+        const weekStart = 0;
+        start.setDate(start.getDate() - ((start.getDay() - weekStart + 7) % 7));
+
+        // Map entries -> { date: Date, value: number }
+        const data = this.entries.map(entry => ({
+            date: new Date(entry.date + 'T00:00:00Z'),
+            value: Number(entry.komoScore || 0)
+        }));
+
+        const cal = new window.CalHeatmap();
+        cal.paint({
+            itemSelector: '#heatmapGrid',
+            domain: 'week',
+            subDomain: 'day',
+            range: this.numWeeks,
+            date: {
+                start,
+                timezone: 'utc'
+            },
+            data: {
+                // Cal-Heatmap v4 accepts array with {date, value}
+                source: data,
+                x: 'date',
+                y: 'value'
+            },
+            scale: {
+                color: {
+                    type: 'threshold',
+                    // 6 colors: 0 no data handled separately, 1..5 use palette
+                    range: ['#E5E7EB', '#3B82F6', '#60A5FA', '#A78BFA', '#F472B6', '#EC4899'],
+                    domain: [0, 1, 2, 3, 4, 5]
+                }
+            },
+            legend: {
+                show: true
+            }
+        });
+    }
+
     renderMonthLabels(dates) {
         const monthLabelsContainer = document.getElementById('month-labels');
         monthLabelsContainer.innerHTML = '';
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         let lastMonth = -1;
 
-        for (let i = 0; i < 52; i++) {
+        for (let i = 0; i < this.numWeeks; i++) {
             const date = dates[i * 7];
             const month = date.getMonth();
             if (month !== lastMonth) {
@@ -184,7 +257,7 @@ class KomomoodApp {
                 monthLabel.textContent = monthNames[month];
                 monthLabel.className = 'absolute';
                 // Approximate position based on week number
-                monthLabel.style.left = `${(i * 100 / 52)}%`;
+                monthLabel.style.left = `${(i * 100 / this.numWeeks)}%`;
                 monthLabelsContainer.appendChild(monthLabel);
             }
             lastMonth = month;
