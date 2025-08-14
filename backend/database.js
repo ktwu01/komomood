@@ -98,6 +98,44 @@ class Database {
         });
     }
 
+    // Get entry by date
+    async getEntryByDate(entry_date) {
+        return new Promise((resolve, reject) => {
+            const selectSQL = 'SELECT * FROM mood_entries WHERE entry_date = ? LIMIT 1';
+            this.db.get(selectSQL, [entry_date], (err, row) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                resolve(row || null);
+            });
+        });
+    }
+
+    // Update entry by date
+    async updateEntryByDate(entryData) {
+        return new Promise((resolve, reject) => {
+            const { entry_date, koko_mood, momo_mood, komo_score, note } = entryData;
+            const updateSQL = `
+                UPDATE mood_entries
+                SET koko_mood = ?, momo_mood = ?, komo_score = ?, note = ?
+                WHERE entry_date = ?
+            `;
+            this.db.run(updateSQL, [koko_mood, momo_mood, komo_score, note, entry_date], async (err) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                try {
+                    const updated = await this.getEntryByDate(entry_date);
+                    resolve(updated);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+        });
+    }
+
     // Close database connection
     close() {
         if (this.db) {

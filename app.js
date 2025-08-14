@@ -450,9 +450,29 @@ class KomomoodApp {
                 return;
             }
 
-            // 2) If backend failed, handle conflict gracefully without GAS fallback
+            // 2) If backend reports conflict, ask whether to overwrite
             if (backendResult && backendResult.status === 409) {
-                this.showCheckinWarning('⚠️ 今天已打卡。如需更新请稍后再试或等待编辑功能。');
+                const confirmed = window.confirm('今天已打卡。是否覆盖今天的记录？');
+                if (confirmed) {
+                    const overwriteResult = await this.submitToBackend({
+                        date, kokoMood, momoMood, komoScore, note, overwrite: true
+                    });
+                    if (overwriteResult.success) {
+                        this.showCheckinSuccess('✅ 已更新今天的记录。');
+                        try {
+                            await this.loadData();
+                            this.renderHeatmap();
+                            this.updateStats();
+                        } catch (_) {}
+                        setTimeout(() => { this.closeCheckinModal(); }, 1500);
+                        return;
+                    }
+                    // If overwrite failed, show error and stop
+                    this.showCheckinError(`覆盖失败：${overwriteResult.error || '未知错误'}`);
+                    return;
+                }
+                // User canceled overwrite
+                this.showCheckinWarning('已取消覆盖，未修改数据。');
                 return;
             }
 
@@ -490,9 +510,10 @@ class KomomoodApp {
         }
     }
 
-    async submitToBackend({ date, kokoMood, momoMood, komoScore, note }) {
+    async submitToBackend({ date, kokoMood, momoMood, komoScore, note, overwrite = false }) {
         try {
-            const response = await fetch('/komomood/api/entries', {
+            const url = overwrite ? '/komomood/api/entries?overwrite=true' : '/komomood/api/entries';
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -503,7 +524,8 @@ class KomomoodApp {
                     koko_mood: Number(kokoMood),
                     momo_mood: Number(momoMood),
                     komo_score: Number(komoScore),
-                    note: note || ''
+                    note: note || '',
+                    overwrite: overwrite === true
                 })
             });
 
@@ -511,7 +533,7 @@ class KomomoodApp {
             const isJson = contentType.includes('application/json');
             const payload = isJson ? await response.json() : await response.text();
 
-            if (response.status === 201) {
+            if (response.status === 201 || response.status === 200) {
                 console.log('后端保存成功:', payload);
                 return { success: true, data: payload };
             }

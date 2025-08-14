@@ -32,28 +32,42 @@ app.post('/api/entries', async (req, res) => {
   try {
     console.log('POST /api/entries called with data:', req.body);
     const { entry_date, koko_mood, momo_mood, komo_score, note } = req.body;
+    const overwrite = String(req.query.overwrite || '').toLowerCase() === 'true' || req.body?.overwrite === true;
     
     // Basic validation
     if (!entry_date) {
       return res.status(400).json({ error: 'entry_date is required' });
     }
     
-    const newEntry = await database.insertEntry({
-      entry_date,
-      koko_mood,
-      momo_mood,
-      komo_score,
-      note
-    });
-    
-    res.status(201).json(newEntry);
+    try {
+      const newEntry = await database.insertEntry({
+        entry_date,
+        koko_mood,
+        momo_mood,
+        komo_score,
+        note
+      });
+      return res.status(201).json(newEntry);
+    } catch (insertError) {
+      // If conflict and overwrite requested, run update instead
+      if ((insertError?.message || '').includes('UNIQUE constraint failed')) {
+        if (overwrite) {
+          const updated = await database.updateEntryByDate({
+            entry_date,
+            koko_mood,
+            momo_mood,
+            komo_score,
+            note
+          });
+          return res.status(200).json(updated);
+        }
+        return res.status(409).json({ error: 'Entry for this date already exists' });
+      }
+      throw insertError;
+    }
   } catch (error) {
     console.error('Error creating entry:', error);
-    if (error.message.includes('UNIQUE constraint failed')) {
-      res.status(409).json({ error: 'Entry for this date already exists' });
-    } else {
-      res.status(500).json({ error: 'Failed to create entry' });
-    }
+    res.status(500).json({ error: 'Failed to create entry' });
   }
 });
 
