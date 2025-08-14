@@ -5,7 +5,9 @@
 
 原架构 (`前端 -> Google Sheet -> GitHub Action -> JSON 文件`) 脆弱且难以维护。为提升系统可靠性、可扩展性并实现数据自托管，我们将迁移至一个更健壮的架构：`前端 -> 本地后端 API -> 本地数据库`。
 
-整个应用将部署在当前 Ubuntu 服务器上，并通过 `https://20011112.xyz/komomood/` 对外提供服务。
+整个应用将部署在当前 Ubuntu 服务器上，并通过 `https://us-south.20011112.xyz/komomood/` 对外提供服务。
+
+注意！不应该部署在 https://20011112.xyz/komomood/。因为当前 Ubuntu 服务器配置的domain是https://us-south.20011112.xyz/。
 
 ## 2. 关键挑战
 
@@ -27,7 +29,7 @@
   - **完成标准**: 后端服务能成功启动，并提供一个健康检查接口（如 `/api/health`），访问该接口返回成功状态。
   - **当前状态**: ✅ 已完成 - 服务器在端口 3001 成功启动，健康检查接口正常工作
 
-- [ ] **任务 1.2: 集成 SQLite 数据库**
+- [✅] **任务 1.2: 集成 SQLite 数据库**
   - **目标**: 在后端项目中集成 SQLite 数据库。
   - **表结构 `mood_entries`**:
     - `id`: `INTEGER` (主键,自增)
@@ -38,6 +40,7 @@
     - `note`: `TEXT`
     - `created_at`: `TEXT` (默认 `CURRENT_TIMESTAMP`)
   - **完成标准**: 后端服务启动时能自动连接（或创建）数据库文件，并创建 `mood_entries` 表。
+  - **当前状态**: ✅ 已完成 - SQLite3 依赖已安装，database.js 文件已创建，服务器启动时成功初始化数据库和表结构
 
 - [ ] **任务 1.3: 实现 CRUD API 接口**
   - **目标**: 创建用于管理情绪记录的增、删、改、查（CRUD）API 接口。
@@ -46,9 +49,9 @@
     - `POST /api/entries`: 新增一条情绪记录。
   - **完成标准**: 所有 API 接口功能正确，并通过工具（如 curl 或 Postman）测试。
 
-- [ ] **任务 1.4: 迁移历史数据**
-  - **目标**: 编写并执行一个一次性脚本，将 `data/entries.json` 的数据导入 SQLite 数据库。
-  - **完成标准**: 数据库中的记录条数与 JSON 文件中的条目数完全一致。
+- [CANCELED] **任务 1.4: 迁移历史数据**
+  - **目标**: 无需导入历史数据，项目将从零开始。
+  - **完成标准**: 无。
 
 ### 第二阶段：前端改造与部署
 
@@ -58,11 +61,11 @@
 
 - [ ] **任务 2.2: 配置 Web 服务器 (Nginx)**
   - **目标**: 配置 Nginx 实现应用的访问路由。
-  - **当前状态**: ⚠️ **部分提前完成** - 已为后端 `/api/` 配置反向代理，用于开发和测试。后续仍需配置前端静态文件代理。
+  - **当前状态**: ⚠️ **部分完成但被阻止** - 后端 `/api/` 反向代理已配置且工作正常，但前端文件服务因权限问题被阻止。
   - **配置要点**:
-    - `location /komomood/`: 指向前端静态文件目录。(待办)
-    - `location /api/`: 反向代理到后端 Node.js 服务的地址（`http://localhost:3001`）。(完成)
-  - **完成标准**: 通过 `https://20011112.xyz/komomood/` 能成功访问应用，且所有功能正常。
+    - `location /komomood/`: 指向前端静态文件目录。(**被阻止**)
+    - `location /api/`: 反向代理到后端 Node.js 服务的地址（`http://localhost:3001`）。(**完成**)
+  - **完成标准**: 通过 `https://us-south.20011112.xyz/komomood/` 能成功访问应用，且所有功能正常。
 
 - [ ] **任务 2.3: 配置后端服务持久化**
   - **目标**: 确保后端服务能在服务器重启后自动运行。
@@ -73,19 +76,28 @@
 
 ### 当前进展
 - ✅ **任务 1.1 已完成**: 后端服务已在端口 3001 成功启动，并通过健康检查。
+- ✅ **任务 1.2 已完成**: SQLite 数据库集成成功，数据库文件和 mood_entries 表已创建。
 - ✅ **Nginx 配置完成**: 已成功配置反向代理，将 `https://us-south.20011112.xyz/api/` 的请求转发至后端服务。
 - ✅ **远程访问验证通过**: 已从外部网络成功访问 `/api/health` 端点，确认端到端连接正常。
 
 ### 待解决问题
-- **所有前期问题已解决**
+- **关键问题: Nginx 权限不足**
+  - **现象**: 访问 `https://us-south.20011112.xyz/komomood/` 返回 403 Forbidden 或 404 Not Found。Nginx 错误日志显示 `stat() "/root/komomood/" failed (13: Permission denied)`。
+  - **原因**: Nginx 的工作进程以 `www-data` 用户身份运行，出于安全限制，它没有权限访问 `/root` 目录下的文件。
+  - **解决方案**:
+    1. **推荐**: 将前端静态文件（整个 `komomood` 项目或仅前端部分）移动到标准的 Web 根目录，如 `/var/www/komomood`。
+    2. **不推荐**: 强行修改 `/root` 目录的权限，这会带来严重的安全风险。
+  - **决策**: 采用推荐方案，将项目部署到 `/var/www/` 目录下。
 
 ### 下一步执行计划
-**执行任务 1.2: 集成 SQLite 数据库**
-- **目标**: 在后端项目中集成 SQLite 数据库，并创建 `mood_entries` 表。
+**执行任务 2.2 (修正): 配置 Web 服务器 (Nginx) 并解决权限问题**
+- **目标**: 将项目文件迁移到标准 Web 目录，并更新 Nginx 配置以正确提供前端服务。
 - **步骤**:
-  1. 在 `backend` 目录下，安装 `sqlite3` 依赖。
-  2. 创建一个新的 `database.js` 文件，用于处理数据库连接和初始化。
-  3. 在 `server.js` 启动时，调用数据库初始化逻辑，确保表结构存在。
+  1. 创建新的项目目录：`sudo mkdir -p /var/www/komomood`。
+  2. 将整个 `komomood` 项目从 `/root/komomood` 移动到 `/var/www/komomood`。
+  3. 调整新目录的所有权，确保 `www-data` 用户有读取权限：`sudo chown -R www-data:www-data /var/www/komomood`。
+  4. 更新 Nginx 配置文件中 `location /komomood/` 的 `alias` 路径，使其指向 `/var/www/komomood/`。
+  5. 重启 Nginx 服务并验证 `https://us-south.20011112.xyz/komomood/` 是否可访问。
 
 ## 5. 经验教训
 
@@ -110,3 +122,7 @@
 - `proxy_pass http://localhost:3001;`: 将 `/api/health` 转发为 `http://localhost:3001/api/health`。
 - `proxy_pass http://localhost:3001/;`: 将 `/api/health` 转发为 `http://localhost:3001/health`。
 根据后端路由的设计，我们需要第一种方式来保留 `/api` 前缀。
+
+### 问题 4: Nginx 文件权限问题
+**关键教训**: Web 服务器（如 Nginx）的工作进程通常以一个低权限用户（如 `www-data`）运行，以增强安全性。因此，Web 应用的文件必须存放在该用户有权访问的目录下。将项目文件放在 `/root` 等受限目录中会导致 "Permission Denied" 错误。
+**标准做法**: 将 Web 项目部署在 `/var/www/` 或 `/srv/` 等标准目录中，并为项目文件设置正确的所有权和权限。
