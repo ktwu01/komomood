@@ -345,6 +345,45 @@
 - 先完成“V1–V4”验证，若确认线上未部署新版 `app.js` 或存在缓存/报错，优先修复部署与缓存；随后再导入 Cal-Heatmap 以替换。
 - 在 Cal-Heatmap 资源就绪前，页面会继续采用“回退到旧网格”的逻辑，不影响使用。
 
+### 第七阶段：Bug 修复（“连续打卡天数”计算不正确）
+
+- 症状：统计区“连续打卡天数”显示不准确。
+- 初步研判根因：
+  1) 时区不一致：
+     - `formatDate(date)` 以 `toISOString()` 取 UTC 日期；
+     - `new Date()` 与 `new Date('YYYY-MM-DD')` 在不同浏览器/环境下按本地/UTC 解析，可能产生跨日偏移；
+     - 导致“今天/昨天”比较出现 off-by-one。
+  2) 现有算法仅在 `i===0` 时特殊处理“今天无、昨天有”的情况，后续期望日推进与集合判断分离不彻底。
+
+- 修复设计（统一 UTC 天粒度）：
+  - 采用“UTC 日”为唯一基准，避免本地时区影响：
+    - 解析：`parseDateUTC('YYYY-MM-DD') => new Date(Date.UTC(y,m-1,d))`；
+    - 序列化：`toDateStringUTC(dateUTC) => YYYY-MM-DD`（使用 UTC 年月日拼接）。
+  - 以集合法计算 streak：
+    1) 构建 `Set<string>` 存储所有已打卡的 UTC 日期字符串；
+    2) 选取 `referenceDateUTC`：若集合包含“今天(UTC)”则从今天开始；否则若包含“昨天(UTC)”则从昨天开始；否则 `streak=0`；
+    3) While 循环：依次检查 `referenceDateUTC, referenceDateUTC-1d, ...` 是否存在于集合，逐日累加，直到断开；
+    4) 返回 `streak`。
+  - 边界：空集合、仅未来日期、重复提交（DB 已按日期唯一确保无重复）。
+
+- 任务拆分：
+  - [ ] 7.1 定义 UTC 工具函数：`parseDateUTC(str)`、`formatDateUTC(dateUTC)`、`addDaysUTC(dateUTC, delta)`、`todayUTC()`、`yesterdayUTC()`。
+  - [ ] 7.2 重写 `calculateCurrentStreak()` 为 `calculateCurrentStreakUTC()` 并替换调用；不依赖本地时区；
+  - [ ] 7.3 单元/断言测试（可在浏览器控制台或简单脚本验证）：
+    - 空数组 → 0；
+    - 仅昨天 → 1；
+    - 今天+昨天 → 2；
+    - 存在断点（今天、前天）→ 1；
+    - 多条连续历史 → 正确连续长度；
+    - 跨 UTC 边界（在 00:00 附近）不受本地时区影响；
+  - [ ] 7.4 端到端验证：提交今天/昨天数据后刷新统计，核对 streak；
+  - [ ] 7.5 文档更新：在此处记录采用“UTC 天”作为 streak 计算基准的决定与原因。
+
+- 成功标准：
+  - 不同浏览器/服务器时区下结果一致；
+  - 没有“午夜前后”或“本地与 UTC 偏移”引发的 off-by-one；
+  - 功能与性能：O(n) 集合构建 + O(k) 连续检查（k 为连续长度），页面响应无明显下降。
+
 ### 项目完成度评估
 - 后端 CRUD（含覆盖）、前端覆盖确认流、Nginx 路由、pm2 进程守护、本地 Tailwind 构建与 favicon 均已交付并线上验证（参考：`https://us-south.20011112.xyz/komomood/`）。
 - 剩余事项：
@@ -362,39 +401,12 @@
 
 ## 4. 执行者反馈区
 
-### 当前进展
-- ✅ **任务 1.1 已完成**: 后端服务已在端口 3001 成功启动，并通过健康检查。
-- ✅ **任务 1.2 已完成**: SQLite 数据库集成成功，数据库文件和 mood_entries 表已创建。
-- ✅ **Nginx 配置完成**: 已成功配置反向代理，将 `https://us-south.20011112.xyz/api/` 的请求转发至后端服务。
-- ✅ **远程访问验证通过**: 已从外部网络成功访问 `/api/health` 端点，确认端到端连接正常。
-- ✅ **任务 1.4 已完成（代码层面）**: 端口切换至 `3002`，并修复了可能导致进程挂起的 `stdin` 问题。
-- ✅ **静态资源迁移**: 已将前端静态文件迁移至 `/var/www/komomood/` 并设置 `www-data` 可读，`https://us-south.20011112.xyz/komomood/` 返回 200。
-- ✅ **Nginx 路由更新**: 已将 `location /komomood/` 的 `alias` 更新为 `/var/www/komomood/`，并新增 `location /komomood/api/` 反代至 `http://localhost:3002/api/;`；配置测试 `nginx -t` 通过并已 reload。
-- ✅ **API 健康检查通过**: 后端重启后，本地与外部 `.../komomood/api/health` 均返回 `{status:'ok'}`（当前 PID 已更新）。
-- ✅ **pm2 守护与自启配置**: `komomood-backend` 在线，`pm2 save` 和 `pm2 startup` 已配置。
-- ✅ **前端改造完成**: `app.js` 已切换到 `/komomood/api/entries` 并包含回退逻辑；已部署至 `/var/www/komomood/`。
- - ✅ **覆盖提交端到端**：后端支持 `?overwrite=true`，前端 409 时提供覆盖确认并成功更新。
- - ✅ **生产资源**：`index.html` 切换为本地 `assets/tailwind.css`，新增 `assets/favicon.svg`。
- - ✅ **部署与验证**：已同步到 `/var/www/komomood/`，杀掉占用 3002 的手动进程后由 pm2 托管后端；通过 `curl` 验证 201→409→200 覆盖流程成功。
-
-#### 现场验证（浏览器 DevTools）
-- **数据加载**：`成功通过 /komomood/api 加载 9 条心情记录` → 后续提交后依次显示 `10`、`11` 条记录（页面自动刷新统计与热力图）。
-- **提交与覆盖**：
-  - 首次提交：控制台日志 `后端保存成功: {id: 11, entry_date: '2025-01-05', ...}` → 随后 `成功通过 /komomood/api 加载 10 条心情记录`。
-  - 再次提交另一日期：`后端保存成功: {id: 12, entry_date: '2025-01-04', ...}` → `成功通过 /komomood/api 加载 11 条心情记录`。
-  - 覆盖流：重复当日提交触发 409 → 弹出确认 → 选择确认覆盖后提示成功并刷新热力图（与后端 200 行为一致）。
-- **样式与资源**：Network 面板显示 `assets/tailwind.css` 已加载（无 CDN 链接）；无 `favicon` 404，浏览器标签显示自定义图标。
-- **浏览器提示**：出现 `Unload event listeners are deprecated and will be removed.`（来源 `frame.js`，与本项目代码无直接关联，属浏览器通用弃用提醒，暂不影响功能）。
-
-#### 新增进展（POST 提交链路）
-- 已在 `app.js` 中实现向后端 `POST /komomood/api/entries` 的直连提交逻辑（函数 `submitToBackend`）。
-- 提交成功后会自动刷新前端缓存数据并更新热力图与统计。
-- 若后端暂时不可用，保留 GAS 提交与 Google Form 作为二级/三级回退方案。
-- 新增最小化 POST 测试脚本：`tests/post_entry.sh`（允许 201/409 均判定为通过）。
-- 已将更新后的前端 `app.js` 部署到 `/var/www/komomood/`。
- - 验证结果（用户现场）：
-   - `2025-08-14` 二次提交：显示“⚠️ 今天已打卡”提示；无 CORS 报错（预期）。
-   - `2025-01-14` 首次提交：✅ 成功提示、后端返回 201 并刷新热力图与统计；控制台显示“成功通过 /komomood/api 加载 3 条心情记录”。
+### 当前进展（精简）
+- 后端/API：健康检查 200；CRUD（GET/POST）可用；端口 3002；pm2 守护。
+- 数据库：SQLite 自动建表；支持覆盖更新（`?overwrite=true`）。
+- Nginx/部署：`/komomood/` 静态与 `/komomood/api/` 反代生效；本地资源（tailwind.css、favicon.svg）。
+- 前端：读写 `/komomood/api/entries`；409 覆盖确认流已上线；+14 天热力图；Cal‑Heatmap 本地资产，缺失时回退旧网格。
+- 测试：`tests/post_entry.sh` 通过（201/409）；端到端覆盖流验证通过。
 
 #### 新增问题记录（浏览器控制台）
 - Tailwind 生产警告：不应在生产使用 `cdn.tailwindcss.com`（参考官方文档）。
@@ -434,18 +446,6 @@
   - 将覆盖确认由 `window.confirm` 升级为自定义 Modal，以保持一致的 UI 风格与可访问性。
   - 针对 `Unload` 弃用提醒，无需动作；仅在未来依赖该事件时避免新增使用。
 
-### 执行者需要您确认 / 协助
-- 请在前端页面中尝试一次“打卡”提交，确认提示为“✅ 提交成功！已保存至本地后端。”并能在热力图中看到最新记录（或刷新后显示）。
-- 如需将现有数据迁移或清理，告知预期策略（保持空库 / 导入历史 JSON / 仅测试数据）。
-- 确认是否采纳以下优化：
-  1) 当 `409` 冲突时不再回退 GAS，仅提示已打卡。
-  2) 引入“覆盖提交”能力（前端确认 + 后端 UPSERT/PUT），以便当天可更新。
-  3) 移除 GAS 回退（生产），失败时仅回退到 Google Form。
-  4) Tailwind 迁移至本地构建 CSS，移除生产环境 CDN。
- - 完全手动验证了以下线上结果：
-   - 覆盖流：任选一个已有日期再提交 → 弹窗确认 → 选择“确认覆盖”后应提示“已更新”，热力图刷新。
-   - 样式：`index.html` 不再加载 `cdn.tailwindcss.com`，Network 面板可见 `assets/tailwind.css` 命中 200。
-   - 图标：浏览器标签页显示自定义 `favicon.svg`，控制台无 `favicon` 404。
 
 ### 当前状态更新（执行 Phase 5 与 Phase 6）
 - 任务 5.3（前端 +14 天）：
