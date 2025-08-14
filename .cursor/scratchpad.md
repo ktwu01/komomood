@@ -49,7 +49,13 @@
     - `POST /api/entries`: 新增一条情绪记录。
   - **完成标准**: 所有 API 接口功能正确，并通过工具（如 curl 或 Postman）测试。
 
-- [CANCELED] **任务 1.4: 迁移历史数据**
+- [✅] **任务 1.4: 解决端口冲突**
+  - **目标**: 修改后端服务配置，使用一个新的、未被占用的端口。
+  - **技术选型**: 端口 `3002`。
+  - **完成标准**: 后端服务能成功在端口 `3002` 启动。
+  - **当前状态**: 已将 `backend/server.js` 中端口改为 `3002`，同步更新了 `backend/test-server.js`，并移除了 `process.stdin.resume()` 以避免后台挂起问题。
+
+- [CANCELED] **任务 1.5: 迁移历史数据**
   - **目标**: 无需导入历史数据，项目将从零开始。
   - **完成标准**: 无。
 
@@ -79,6 +85,7 @@
 - ✅ **任务 1.2 已完成**: SQLite 数据库集成成功，数据库文件和 mood_entries 表已创建。
 - ✅ **Nginx 配置完成**: 已成功配置反向代理，将 `https://us-south.20011112.xyz/api/` 的请求转发至后端服务。
 - ✅ **远程访问验证通过**: 已从外部网络成功访问 `/api/health` 端点，确认端到端连接正常。
+- ✅ **任务 1.4 已完成（代码层面）**: 端口切换至 `3002`，并修复了可能导致进程挂起的 `stdin` 问题。
 
 ### 待解决问题
 - **关键问题: Nginx 权限不足**
@@ -88,16 +95,26 @@
     1. **推荐**: 将前端静态文件（整个 `komomood` 项目或仅前端部分）移动到标准的 Web 根目录，如 `/var/www/komomood`。
     2. **不推荐**: 强行修改 `/root` 目录的权限，这会带来严重的安全风险。
   - **决策**: 采用推荐方案，将项目部署到 `/var/www/` 目录下。
+- **配置不一致: Nginx 仍反代到 3001**
+  - **现状**: `/etc/nginx/sites-available/clipboard` 中 `location /api/` 仍为 `proxy_pass http://localhost:3001/api/;`。
+  - **需要**: 更新为 `http://localhost:3002/api/;`。
+- **静态目录指向受限路径**
+  - **现状**: `location /komomood/ { alias /root/komomood/; }`。
+  - **需要**: 指向 `/var/www/komomood/` 并确保 `www-data` 可读。
 
 ### 下一步执行计划
 **执行任务 2.2 (修正): 配置 Web 服务器 (Nginx) 并解决权限问题**
 - **目标**: 将项目文件迁移到标准 Web 目录，并更新 Nginx 配置以正确提供前端服务。
 - **步骤**:
+  0. 仅在确认后，先停止当前占用 `3002` 的任何 Node 进程（仅限本项目相关）。
   1. 创建新的项目目录：`sudo mkdir -p /var/www/komomood`。
-  2. 将整个 `komomood` 项目从 `/root/komomood` 移动到 `/var/www/komomood`。
-  3. 调整新目录的所有权，确保 `www-data` 用户有读取权限：`sudo chown -R www-data:www-data /var/www/komomood`。
-  4. 更新 Nginx 配置文件中 `location /komomood/` 的 `alias` 路径，使其指向 `/var/www/komomood/`。
-  5. 重启 Nginx 服务并验证 `https://us-south.20011112.xyz/komomood/` 是否可访问。
+  2. 同步项目文件至 `/var/www/komomood/`：`sudo rsync -a --delete /root/komomood/ /var/www/komomood/`。
+  3. 调整所有权：`sudo chown -R www-data:www-data /var/www/komomood`（或至少确保静态资源可读）。
+  4. 更新 Nginx 配置：
+     - 将 `location /komomood/` 的 `alias` 更新为 `/var/www/komomood/`。
+     - 将 `location /api/` 的 `proxy_pass` 更新为 `http://localhost:3002/api/;`。
+  5. `sudo nginx -t && sudo systemctl reload nginx`，验证 `https://us-south.20011112.xyz/komomood/`。
+  6. 使用进程管理（后续任务 2.3）守护后端服务。
 
 ## 5. 经验教训
 
@@ -126,3 +143,82 @@
 ### 问题 4: Nginx 文件权限问题
 **关键教训**: Web 服务器（如 Nginx）的工作进程通常以一个低权限用户（如 `www-data`）运行，以增强安全性。因此，Web 应用的文件必须存放在该用户有权访问的目录下。将项目文件放在 `/root` 等受限目录中会导致 "Permission Denied" 错误。
 **标准做法**: 将 Web 项目部署在 `/var/www/` 或 `/srv/` 等标准目录中，并为项目文件设置正确的所有权和权限。
+
+### 问题 5: 端口冲突
+**关键教训**: 在部署新应用时，必须检查服务器上已有的服务，确保新应用使用的端口没有被占用。本次部署中，`komomood` 应用尝试使用的端口 `3001` 与现有应用 `@https://us-south.20011112.xyz/clip/` 的后端服务冲突，导致 `EADDRINUSE` 错误和一系列的启动问题。
+**解决方案**: 为 `komomood` 后端服务选择一个明确未被占用的新端口（例如 `3002`），并在 Nginx 反向代理配置中同步更新。
+
+## 6. 安全进程审计与清理计划（仅规划，不执行）
+
+- **目标**: 在不影响现有 `clip` 应用（`https://us-south.20011112.xyz/clip/`）的前提下，识别并清理与 `komomood` 无关或已僵死的进程，释放端口 `3002`。
+- **已知事实**:
+  - `clip` 前端通过 Nginx 提供，反代到 `localhost:3000/`。
+  - `clip` 的 API 通过 Nginx 提供，反代到 `localhost:3001/api/`。
+  - `komomood` 后端目标端口为 `3002`（代码已切换）。
+  - 参考页面: [`clip`](https://us-south.20011112.xyz/clip/)。
+- **不应终止的进程**:
+  - 监听 `3000`、`3001` 的 Node 进程（属于 `clip`）。
+  - Nginx、自身系统服务。
+- **需要清理的候选**:
+  - 监听 `3002` 的 Node 进程，且工作目录在 `(/root|/var/www)/komomood`，或命令行包含 `backend/server.js`。
+
+- **审计步骤（只读）**:
+  1. 列出监听端口（3000/3001/3002）：
+     ```bash
+     ss -tulpn | grep -E ':3000|:3001|:3002'
+     ```
+  2. 针对每个 PID，采集元数据：
+     ```bash
+     ps -o pid,user,cmd -p <PID> | sed -n '2p'
+     readlink /proc/<PID>/cwd || true
+     tr '\0' ' ' < /proc/<PID>/cmdline || true
+     ```
+  3. 归类：
+     - 若端口为 `3000/3001` → 标记为 `clip`，禁止终止。
+     - 若端口为 `3002` 且 `cwd` 或 `cmdline` 指向 `komomood` → 标记为 `komomood`，允许进入“候选终止列表”。
+
+- **清理步骤（需确认后执行）**:
+  - 对“候选终止列表”逐个执行：
+    ```bash
+    kill <PID> || true; sleep 1; kill -9 <PID> || true
+    ```
+  - 再次验证 `3002` 已释放：
+    ```bash
+    ss -tulpn | grep ':3002' || echo 'port 3002 free'
+    ```
+
+- **成功标准**:
+  - `clip` 访问与 API 均不受影响。
+  - 端口 `3002` 处于空闲状态，为 `komomood` 后端启动做好准备。
+
+## 7. Nginx 路由隔离与更新（避免与 clip 冲突）
+
+- **问题**: 当前虚拟主机中 `/api/` 指向 `localhost:3001/api/;`（为 `clip` 使用），不应复用给 `komomood`。
+- **方案**:
+  - 保留现有 `/clip/` 与 `/api/`（供 `clip` 使用）。
+  - 为 `komomood` 增加独立路由前缀：
+    - 静态：`/komomood/` → `alias /var/www/komomood/`（迁移后）。
+    - API：`/komomood/api/` → `proxy_pass http://localhost:3002/api/;`。
+
+- **建议的 Nginx 片段（仅供参考，需人工比对后修改）**:
+  ```nginx
+  location /komomood/ {
+      alias /var/www/komomood/;
+      index index.html;
+      try_files $uri $uri/ =404;
+  }
+
+  location /komomood/api/ {
+      proxy_pass http://localhost:3002/api/;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+  }
+  ```
+
+- **变更后验证**:
+  - `nginx -t` 通过，reload 成功。
+  - `https://us-south.20011112.xyz/clip/` 正常。
+  - `https://us-south.20011112.xyz/komomood/` 可访问静态资源。
+  - `https://us-south.20011112.xyz/komomood/api/health` 返回 `{status: 'ok'}`。

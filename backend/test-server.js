@@ -14,8 +14,8 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(3001, () => {
-  console.log('Test server listening on port 3001');
+server.listen(3002, () => {
+  console.log('Test server listening on port 3002');
 });
 
 console.log('Server setup complete');
