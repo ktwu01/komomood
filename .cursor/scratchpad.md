@@ -14,6 +14,7 @@
 - **数据库设置**: 设计并初始化一个本地数据库（如 SQLite）来存储情绪数据。
 - **数据迁移**: 将现有 `data/entries.json` 的数据安全、无损地迁移到新数据库。
 - **前端重构**: 调整前端代码，使其与新的本地后端 API 进行通信。
+- **前端样式生产化**: 去除 `cdn.tailwindcss.com` 生产依赖，采用本地构建的压缩 CSS（Tailwind CLI 或 PostCSS）。
 - **Web 服务器配置**: 配置 Nginx 或其他 Web 服务器，使其能正确地：
   - 在 `/komomood/` 路径下提供前端静态文件。
   - 将 API 请求（如 `/api/*`）反向代理到后端服务。
@@ -74,6 +75,77 @@
   - **完成标准**: 通过 `https://us-south.20011112.xyz/komomood/` 能成功访问应用，且 `https://us-south.20011112.xyz/komomood/api/health` 返回 200。
 
 - [✅] **任务 2.3: 配置后端服务持久化**
+#### 新增：前端提交与错误处理改进
+- [ ] 任务 2.4: 提交冲突(409)的用户体验优化（含紧急解堵方案）
+  - 目标：当 `POST /komomood/api/entries` 返回 409（当日已存在）时，不再回退至 GAS；而是提示“当日已打卡”，并允许用户覆盖/编辑或关闭提示。
+  - 成功标准：
+    - 创建首次当日记录：HTTP 201 → 成功提示并刷新热力图。
+    - 重复当日提交：HTTP 409 → 显示用户友好提示，不触发 GAS 请求；控制台无 CORS 报错。
+  - 变更要点：
+    - 在 `submitCheckinForm()` 中检测 `submitToBackend` 返回的 `status===409`，停止后续回退链路（不再调用 GAS），展示“今天已打卡”提示。
+    - 记录成功/冲突后刷新 UI（或允许用户选择刷新）。
+  - 紧急解堵：
+    - 方式A（立即可用）：删除当日的测试记录（2025-08-14）以恢复首次提交路径。
+      - 执行：`sqlite3 backend/mood_entries.db "DELETE FROM mood_entries WHERE entry_date='YYYY-MM-DD'"`（由执行者操作）。
+      - 成功标准：前端首次提交返回 201，无 409 弹窗。
+    - 方式B（功能性修复，推荐）：实现“覆盖提交”（见 任务 2.6/3.2），即遇到 409 时询问用户是否覆盖，确认后完成更新。
+  - 当前状态：
+    - 阶段1（阻断回退到 GAS + 友好提示）：✅ 已上线。重复当天提交显示“今天已打卡”且无 CORS 报错。
+    - 阶段2（覆盖提交 UI）：⏳ 待实现，见任务 2.6。
+
+##### 即刻执行建议（需要您的选择）
+- A. 先清掉今日测试数据，马上恢复“首次提交”路径；随后上线“覆盖提交”。
+- B. 不清数据，直接实现“覆盖提交”端到端（后端 UPSERT/PUT + 前端确认），上线后再测试。
+
+- [ ] 任务 2.5: 移除 GAS 回退（生产环境）
+  - 目标：避免触发 GAS 跨域（CORS）错误，生产环境失败时仅回退至 Google Form 预填单。
+  - 成功标准：后端不可用时，直接弹出“将使用 Google Form 备用方案”，不再出现 GAS CORS 报错。
+  - 参考：Tailwind／Apps Script 文档参见下方参考链接。
+  - 当前状态：✅ 已实现（`app.js` 使用 `window.location.hostname` 判定生产域，生产环境直接跳过 GAS，转 Google Form）。
+
+- [ ] 任务 2.6: 前端“覆盖提交”确认流（与 3.2 配合）
+  - 目标：当后端返回 409 时，弹出确认对话框，用户确认后调用“覆盖/更新”接口。
+  - 成功标准：
+    - 用户确认 → 更新成功（HTTP 200），界面显示“已更新”并刷新热力图。
+    - 用户取消 → 不修改数据，无错误弹窗。
+  - 变更要点：在 `submitCheckinForm()` 中分支处理 409，新增确认 UI 与后续调用（PUT/UPSERT）。
+
+### 第三阶段：前端样式生产优化（Tailwind）
+- [ ] 任务 3.1: 迁移 Tailwind 至本地构建产物
+  - 目标：移除 `cdn.tailwindcss.com`，改为构建并引用本地压缩 CSS。
+  - 方案（简易 CLI 路径）：
+    1. 安装 CLI（可用本地或全局方式）：`npx tailwindcss -i input.css -o assets/tailwind.css --minify`。
+    2. 新增 `input.css`（包含 `@tailwind base; @tailwind components; @tailwind utilities;`）。
+    3. 创建 `tailwind.config.js`（扫描 `index.html`、`app.js` 等）。
+    4. 构建后将 `assets/tailwind.css` 部署到 `/var/www/komomood/assets/` 并在 `index.html` 中替换 CDN 链接。
+  - 成功标准：页面功能与样式一致；控制台不再提示生产环境警告；页面首屏加载 CSS 来自本地文件。
+  - 参考：[Tailwind 安装指南](https://tailwindcss.com/docs/installation)
+
+### 第四阶段：后端更新与幂等
+- [ ] 任务 3.2: 后端支持“覆盖/更新”
+  - 方案一（SQLite UPSERT，简单高效，推荐）：
+    - 在 `POST /api/entries` 增加 `?overwrite=true`（或请求体 `overwrite:true`）时，执行 `INSERT ... ON CONFLICT(entry_date) DO UPDATE SET ...`。
+    - 首次提交 → 201；覆盖提交 → 200，返回更新后的记录。
+  - 方案二（RESTful 分离）：新增 `PUT /api/entries/:entry_date` 用于按日期更新。
+  - 安全性（可选）：允许传入 `passphrase` 进行简单服务端校验（与现有 `0317` 保持一致）。
+  - 成功标准：
+    - 正常创建：201；冲突覆盖：200；错误输入：400/422；重复键且未授权覆盖：409。
+  - 实现要点：
+    - `database.js` 提供 `upsertEntry()` 或 `updateEntryByDate()`。
+    - `server.js` 路由分支处理，返回清晰错误信息。
+  - 参考：
+    - SQLite UPSERT 官方文档：[SQLite UPSERT](https://www.sqlite.org/lang_UPSERT.html)
+    - MDN HTTP 409 冲突语义：[MDN 409](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/409)
+
+### 杂项修复
+- [ ] 任务 4.1: favicon 404 修复
+  - 添加 `favicon.ico` 到 `/var/www/komomood/` 并在 `index.html` 中使用 `<link rel="icon" href="/komomood/favicon.ico" />`。
+  - 成功标准：控制台不再出现 `favicon.ico 404`。
+
+## 参考资料（规划依据）
+- Tailwind CSS 生产安装与构建：[Tailwind Installation](https://tailwindcss.com/docs/installation)
+- 站点现状与控制台信息：`https://us-south.20011112.xyz/komomood/`
+
   - **目标**: 确保后端服务能在服务器重启后自动运行。
   - **推荐工具**: `pm2` 或 `systemd`。
   - **完成标准**: 后端服务被进程管理工具接管，并设置为开机自启。
@@ -93,6 +165,23 @@
 - ✅ **pm2 守护与自启配置**: `komomood-backend` 在线，`pm2 save` 和 `pm2 startup` 已配置。
 - ✅ **前端改造完成**: `app.js` 已切换到 `/komomood/api/entries` 并包含回退逻辑；已部署至 `/var/www/komomood/`。
 
+#### 新增进展（POST 提交链路）
+- 已在 `app.js` 中实现向后端 `POST /komomood/api/entries` 的直连提交逻辑（函数 `submitToBackend`）。
+- 提交成功后会自动刷新前端缓存数据并更新热力图与统计。
+- 若后端暂时不可用，保留 GAS 提交与 Google Form 作为二级/三级回退方案。
+- 新增最小化 POST 测试脚本：`tests/post_entry.sh`（允许 201/409 均判定为通过）。
+- 已将更新后的前端 `app.js` 部署到 `/var/www/komomood/`。
+ - 验证结果（用户现场）：
+   - `2025-08-14` 二次提交：显示“⚠️ 今天已打卡”提示；无 CORS 报错（预期）。
+   - `2025-01-14` 首次提交：✅ 成功提示、后端返回 201 并刷新热力图与统计；控制台显示“成功通过 /komomood/api 加载 3 条心情记录”。
+
+#### 新增问题记录（浏览器控制台）
+- Tailwind 生产警告：不应在生产使用 `cdn.tailwindcss.com`（参考官方文档）。
+- GAS CORS 报错：当后端返回 409 或失败时，回退到 GAS 会被浏览器同源策略拦截（无 `Access-Control-Allow-Origin`），建议移除 GAS 回退或通过后端代理。
+  - 参考：
+    - Tailwind 生产安装：[Tailwind Installation](https://tailwindcss.com/docs/installation)
+    - 409 冲突的典型含义与处理：HTTP 409 代表资源状态冲突；对于按唯一键（日期）创建记录，常见做法为提供覆盖/更新路径（PUT 或 UPSERT）。
+
 ### 待解决问题
 - 当前无阻塞问题。
   - Nginx 权限、路径与反代前缀均已修正并验证 200。
@@ -105,6 +194,25 @@
   - `https://us-south.20011112.xyz/komomood/api/health` 返回 200（已验证）。
   - `https://us-south.20011112.xyz/komomood/api/entries` 返回 JSON（当前为空数组 [] 合理）。
   - 浏览器控制台出现“成功通过 /komomood/api 加载 ... 条心情记录”日志。
+  - 使用脚本 `bash tests/post_entry.sh` 进行最小化 POST 验证（期望 201 或 409）。
+  - 前端 UI 提交：
+    - 当日首次提交 → 成功提示并刷新热力图。
+    - 当日重复提交 → 仅友好提示，不触发 GAS；控制台无 CORS 报错。
+  - 本轮实现：
+    1) 完成 3.2 后端 UPSERT/PUT 实现；
+    2) 完成 2.6 前端覆盖提交确认流；
+    3) 补充测试脚本：创建→冲突→覆盖，期望状态码 201/409/200；
+    4) 合并部署与回归测试；
+    5) 之后进行 3.1 Tailwind 本地构建与 4.1 favicon 修复。
+
+### 执行者需要您确认 / 协助
+- 请在前端页面中尝试一次“打卡”提交，确认提示为“✅ 提交成功！已保存至本地后端。”并能在热力图中看到最新记录（或刷新后显示）。
+- 如需将现有数据迁移或清理，告知预期策略（保持空库 / 导入历史 JSON / 仅测试数据）。
+- 确认是否采纳以下优化：
+  1) 当 `409` 冲突时不再回退 GAS，仅提示已打卡。
+  2) 引入“覆盖提交”能力（前端确认 + 后端 UPSERT/PUT），以便当天可更新。
+  3) 移除 GAS 回退（生产），失败时仅回退到 Google Form。
+  4) Tailwind 迁移至本地构建 CSS，移除生产环境 CDN。
 
 ## 5. 经验教训
 

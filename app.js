@@ -39,6 +39,9 @@ class KomomoodApp {
 				passphrase: { param: 'entry.1162583406', value: '0317' }
 			}
 		};
+
+        // Environment flag: production domain check
+        this.isProduction = (typeof window !== 'undefined') && (window.location.hostname === 'us-south.20011112.xyz');
         
         this.init();
     }
@@ -428,24 +431,50 @@ class KomomoodApp {
         }
 
         try {
-            // First, try GAS Web App direct submission
-            const gasResult = await this.submitToGAS({
-                date, kokoMood, momoMood, komoScore, note, passphrase
+            // 1) Try backend API directly
+            const backendResult = await this.submitToBackend({
+                date, kokoMood, momoMood, komoScore, note
             });
 
-            if (gasResult.success) {
-                this.showCheckinSuccess('✅ 提交成功！数据将在1-2分钟内自动同步到热力图。');
+            if (backendResult.success) {
+                this.showCheckinSuccess('✅ 提交成功！已保存至本地后端。');
+                // Refresh in-memory data and UI
+                try {
+                    await this.loadData();
+                    this.renderHeatmap();
+                    this.updateStats();
+                } catch (_) {}
                 setTimeout(() => {
                     this.closeCheckinModal();
-                }, 2500);
+                }, 2000);
                 return;
-            } else {
-                // GAS failed, show specific error and then fallback
-                const errorMessage = `GAS 提交失败: ${gasResult.error || '未知错误'}`;
-                console.warn(errorMessage);
-                this.showCheckinError(errorMessage + ' 将尝试备用方案...');
-                setTimeout(() => this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }), 2000);
             }
+
+            // 2) If backend failed, handle conflict gracefully without GAS fallback
+            if (backendResult && backendResult.status === 409) {
+                this.showCheckinWarning('⚠️ 今天已打卡。如需更新请稍后再试或等待编辑功能。');
+                return;
+            }
+
+            // 3) Fallback policy
+            // In production: skip GAS to avoid CORS; directly use Google Form as last resort
+            if (this.isProduction) {
+                this.showCheckinWarning('⚠️ 后端暂不可用，正在使用备用方案（Google Form）...');
+                setTimeout(() => this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }), 1200);
+                return;
+            }
+
+            // In non-production environments, allow GAS fallback for testing
+            const gasResult = await this.submitToGAS({ date, kokoMood, momoMood, komoScore, note, passphrase });
+            if (gasResult.success) {
+                this.showCheckinSuccess('✅ 提交成功！数据将在1-2分钟内自动同步到热力图。');
+                setTimeout(() => { this.closeCheckinModal(); }, 2500);
+                return;
+            }
+            const errorMessage = `GAS 提交失败: ${gasResult.error || '未知错误'}`;
+            console.warn(errorMessage);
+            this.showCheckinError(errorMessage + ' 将尝试备用方案...');
+            setTimeout(() => this.fallbackToGoogleForm({ date, kokoMood, momoMood, komoScore, note, passphrase }), 2000);
         } catch (error) {
             console.error('Error during submission:', error);
             // Fallback to Google Form with specific error message
@@ -458,6 +487,41 @@ class KomomoodApp {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }
+        }
+    }
+
+    async submitToBackend({ date, kokoMood, momoMood, komoScore, note }) {
+        try {
+            const response = await fetch('/komomood/api/entries', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    entry_date: date,
+                    koko_mood: Number(kokoMood),
+                    momo_mood: Number(momoMood),
+                    komo_score: Number(komoScore),
+                    note: note || ''
+                })
+            });
+
+            const contentType = response.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+            const payload = isJson ? await response.json() : await response.text();
+
+            if (response.status === 201) {
+                console.log('后端保存成功:', payload);
+                return { success: true, data: payload };
+            }
+
+            const errorMessage = (isJson && payload && payload.error) ? payload.error : (response.statusText || '提交失败');
+            console.warn('后端保存失败:', response.status, errorMessage);
+            return { success: false, error: errorMessage, status: response.status };
+        } catch (error) {
+            console.error('submitToBackend error:', error);
+            return { success: false, error: error.message };
         }
     }
 

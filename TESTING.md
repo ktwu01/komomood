@@ -20,3 +20,11 @@ Manual and automated checks for komomood
 5) pm2 process
 - pm2 status | grep komomood-backend
   Expect: online
+
+6) Minimal POST test (via Nginx)
+- Ensure `jq` is installed (`sudo apt-get install -y jq`)
+- Run test script:
+  ```bash
+  bash tests/post_entry.sh
+  ```
+  Accept: HTTP 201 (created) or HTTP 409 (duplicate date). Script prints debug info and a PASS/FAIL line.
