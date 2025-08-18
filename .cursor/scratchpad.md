@@ -732,3 +732,79 @@
 
 ### 新增经验（Lesson）
 - 避免同时以“手动 node 运行”和“pm2 托管”两种方式启动同一个服务，否则会导致端口冲突，使 pm2 进程进入 `errored` 状态。统一使用 pm2 托管并 `pm2 save`、`pm2 startup` 保证重启恢复。
+
+## 临时任务：验证服务可用并添加 8 月 17 日的备注
+
+### 背景与动机（Planner）
+- 用户请求：先检查系统是否工作正常；若正常，则向数据库添加 8 月 17 日的一条备注“Kw Pine working time 8 hr”。
+- 约束：不修改代码；优先通过现有 API 验证与写入；如遇到冲突（同日已存在），采用已实现的覆盖流（`?overwrite=true`）。
+
+### 关键点与分析（Planner）
+- 当前表结构：`mood_entries(entry_date TEXT UNIQUE NOT NULL, koko_mood INTEGER, momo_mood INTEGER, komo_score INTEGER, note TEXT, ...)`。仅 `entry_date` 必填，其余可为空（NULL）。
+- 后端接口已实现：
+  - `GET /komomood/api/entries` 返回全量列表。
+  - `POST /komomood/api/entries` 创建；若唯一键冲突且带上 `?overwrite=true` 则更新并返回 200。
+- 日期采用 `YYYY-MM-DD`，以当前日期上下文推断 8 月 17 日为 2025-08-17。
+
+### 高层成功标准（可由执行者自证）
+- 健康检查：`/komomood/api/health` 返回 `{status:"ok"}`。
+- 读取：`/komomood/api/entries` 返回 200 且为 JSON 数组。
+- 写入：存在 201（新建）或 200（覆盖）之一；库内存在 `entry_date='2025-08-17'` 且 `note='Kw Pine working time 8 hr'`。
+
+### 执行步骤（Executor 待执行，仅一步一步进行）
+1) 验证后端可用（通过 Nginx）：
+```bash
+curl -sS https://us-south.20011112.xyz/komomood/api/health
+curl -sS https://us-south.20011112.xyz/komomood/api/entries | head -c 200 | cat
+```
+  - 期望：200；健康返回 `ok`；entries 为 JSON 数组。
+
+2) 添加 2025-08-17 备注（方法 A：优先使用 API）
+```bash
+curl -sS -X POST 'https://us-south.20011112.xyz/komomood/api/entries' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "entry_date": "2025-08-17",
+    "note": "Kw Pine working time 8 hr"
+  }'
+```
+  - 期望：首次 201 返回新记录；若返回 409，则改用覆盖：
+```bash
+curl -sS -X POST 'https://us-south.20011112.xyz/komomood/api/entries?overwrite=true' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "entry_date": "2025-08-17",
+    "note": "Kw Pine working time 8 hr"
+  }'
+```
+  - 期望：200 返回更新后的记录。
+
+3) 验证写入结果
+```bash
+curl -sS https://us-south.20011112.xyz/komomood/api/entries | jq '.[] | select(.entry_date=="2025-08-17")'
+```
+  - 期望：能看到该日期的记录，`note` 为目标文案。
+
+4) 备用路径（方法 B：直接写 SQLite；仅在 API 不可用时使用）
+```bash
+sqlite3 /root/komomood/backend/mood_entries.db "INSERT INTO mood_entries (entry_date, note) VALUES ('2025-08-17','Kw Pine working time 8 hr');"
+# 若该日期已存在，使用覆盖更新：
+sqlite3 /root/komomood/backend/mood_entries.db "UPDATE mood_entries SET note='Kw Pine working time 8 hr' WHERE entry_date='2025-08-17';"
+# 验证：
+sqlite3 -header -column /root/komomood/backend/mood_entries.db "SELECT entry_date,koko_mood,momo_mood,komo_score,note FROM mood_entries WHERE entry_date='2025-08-17';"
+```
+
+### 参考（官方文档）
+- SQLite INSERT 语法：`https://sqlite.org/lang_insert.html`
+- SQLite UPDATE 语法： `https://sqlite.org/lang_update.html`
+
+### Project Status Board（本任务）
+- [x] 验证健康与读取（1）
+- [x] 通过 API 添加/覆盖 2025-08-17 备注（2）
+- [x] 通过 API 或 SQLite 验证结果（3/4）
+
+### Executor 的输出期望
+- 健康：`{"status":"ok"}`；
+- 读取：JSON 数组包含目标日期；
+- 写入：覆盖返回 200（响应体包含 note）；
+- SQLite 验证：`2025-08-17|5|5|5|Kw Pine working time 8 hr`。
